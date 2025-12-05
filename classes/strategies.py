@@ -90,3 +90,75 @@ class MeanReversionStrategy(BaseStrategy):
             
         df['Signal'] = signals
         return df
+
+# --- ESTRATEGIA 3: BOLLINGER BREAKOUT (VOLATILIDAD) ---
+class BollingerBreakoutStrategy(BaseStrategy):
+    def __init__(self):
+        super().__init__("Bollinger Breakout")
+
+    def generate_signals(self, df, params):
+        """params: {'window': 20, 'std_dev': 2}"""
+        window = params.get('window', 20)
+        std_dev = params.get('std_dev', 2)
+        
+        # Cálculo de Bandas
+        df['BB_Mid'] = df['Close'].rolling(window=window).mean()
+        std = df['Close'].rolling(window=window).std()
+        df['BB_Upper'] = df['BB_Mid'] + (std * std_dev)
+        df['BB_Lower'] = df['BB_Mid'] - (std * std_dev)
+        
+        df['Signal'] = 0
+        
+        # Lógica de Ruptura:
+        # COMPRA: Precio cierra por ENCIMA de la banda superior (Explosión)
+        # VENTA: Precio vuelve a tocar la media central (Reversión a la media)
+        
+        signals = np.zeros(len(df))
+        position = 0
+        
+        close = df['Close'].values
+        upper = df['BB_Upper'].values
+        mid = df['BB_Mid'].values
+        
+        for i in range(len(df)):
+            if pd.isna(upper[i]): continue
+            
+            # Entrada: Rompe techo
+            if position == 0 and close[i] > upper[i]:
+                position = 1
+            # Salida: Toca el centro (Stop dinámico)
+            elif position == 1 and close[i] < mid[i]:
+                position = 0
+            
+            signals[i] = position
+            
+        df['Signal'] = signals
+        return df
+
+# --- ESTRATEGIA 4: MACD MOMENTUM (IMPULSO) ---
+class MACDStrategy(BaseStrategy):
+    def __init__(self):
+        super().__init__("MACD Momentum")
+
+    def generate_signals(self, df, params):
+        """params: {'fast': 12, 'slow': 26, 'signal': 9}"""
+        fast = params.get('fast', 12)
+        slow = params.get('slow', 26)
+        sig = params.get('signal', 9)
+        
+        # Cálculo MACD
+        exp1 = df['Close'].ewm(span=fast, adjust=False).mean()
+        exp2 = df['Close'].ewm(span=slow, adjust=False).mean()
+        df['MACD'] = exp1 - exp2
+        df['Signal_Line'] = df['MACD'].ewm(span=sig, adjust=False).mean()
+        df['Histogram'] = df['MACD'] - df['Signal_Line']
+        
+        df['Signal'] = 0
+        
+        # Lógica: Cruce de MACD sobre Señal
+        # Vectorizado para velocidad
+        cruce_compra = (df['MACD'] > df['Signal_Line'])
+        
+        # Mantenemos posición mientras MACD esté arriba
+        df.loc[cruce_compra, 'Signal'] = 1
+        return df
