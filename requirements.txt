@@ -1,6 +1,7 @@
 streamlit
-yfinance
+yfinance>=0.2.40
 pandas
 plotly
 requests
 curl_cffi
+textblob
