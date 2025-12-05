@@ -4,6 +4,7 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 import config as cfg
+import requests
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(page_title="TradeXpert Dashboard", layout="wide", page_icon="📈")
@@ -16,23 +17,39 @@ sidebar_ticker = st.sidebar.selectbox("Selecciona un Activo:", cfg.TICKERS)
 st.sidebar.markdown(f"**Estrategia:** SMA {cfg.SMA_FAST}/{cfg.SMA_SLOW} + RSI < {cfg.RSI_THRESHOLD}")
 
 # --- FUNCIÓN DE CARGA DE DATOS (CON CACHÉ PARA VELOCIDAD) ---
-@st.cache_data(ttl=60) # Actualiza datos cada 60 segundos
+@st.cache_data(ttl=300) # Aumentamos el caché a 5 min para no molestar a Yahoo
 def get_data(symbol):
-    df = yf.ticker.Ticker(symbol).history(period="2y")
-    if df.empty: return None
-    
-    # Indicadores
-    df['SMA_Fast'] = df['Close'].rolling(window=cfg.SMA_FAST).mean()
-    df['SMA_Slow'] = df['Close'].rolling(window=cfg.SMA_SLOW).mean()
-    
-    # RSI
-    delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
-    df['RSI'] = 100 - (100 / (1 + rs))
-    
-    return df
+    try:
+        # CREAMOS UNA SESIÓN FALSA (EL DISFRAZ)
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        })
+        
+        # Le pasamos la sesión a yfinance
+        ticker = yf.Ticker(symbol, session=session)
+        df = ticker.history(period="2y")
+        
+        if df.empty: 
+            st.warning(f"No se encontraron datos para {symbol}. Tal vez Yahoo está bloqueando temporalmente.")
+            return None
+        
+        # Indicadores (Tu lógica original)
+        df['SMA_Fast'] = df['Close'].rolling(window=cfg.SMA_FAST).mean()
+        df['SMA_Slow'] = df['Close'].rolling(window=cfg.SMA_SLOW).mean()
+        
+        # RSI
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        df['RSI'] = 100 - (100 / (1 + rs))
+        
+        return df
+
+    except Exception as e:
+        st.error(f"Error conectando con Yahoo Finance: {e}")
+        return None
 
 # --- LÓGICA PRINCIPAL ---
 df = get_data(sidebar_ticker)
@@ -111,4 +128,5 @@ else:
 # Botón para refrescar
 if st.button('🔄 Actualizar Análisis'):
     st.cache_data.clear()
+
     st.rerun()
