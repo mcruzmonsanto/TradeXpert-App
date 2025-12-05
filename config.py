@@ -14,8 +14,43 @@ def get_secret(key):
 TELEGRAM_TOKEN = get_secret("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = get_secret("TELEGRAM_CHAT_ID")
 
-# 1. LISTA DE ACTIVOS (Portafolio)
-TICKERS = ["AMD", "NVDA", "MSFT", "GOOGL", "TSLA"]
+# config.py
+
+# --- UNIVERSO DE ACTIVOS (S&P 500 SECTORS + CRYPTO + INDICES) ---
+TICKERS = [
+    # --- INDICES PRINCIPALES ---
+    "SPY", "QQQ", "DIA",          # S&P 500, Nasdaq 100, Dow Jones
+
+    # --- CRYPTO (TOP 3) ---
+    "BTC-USD", "ETH-USD", "SOL-USD",
+
+    # --- TECNOLOGÍA (Tech) ---
+    "MSFT", "AAPL", "NVDA",
+    
+    # --- COMUNICACIONES (Comm Services) ---
+    "GOOGL", "META", "NFLX",
+
+    # --- CONSUMO DISCRECIONAL (Cyclical) ---
+    "AMZN", "TSLA", "HD",
+
+    # --- FINANCIEROS (Financials) ---
+    "JPM", "V", "MA",
+
+    # --- SALUD (Healthcare) ---
+    "LLY", "UNH", "JNJ",
+
+    # --- CONSUMO BÁSICO (Defensive) ---
+    "WMT", "PG", "COST",
+
+    # --- ENERGÍA (Energy) ---
+    "XOM", "CVX", "COP",
+
+    # --- INDUSTRIALES ---
+    "CAT", "UNP", "GE",
+    
+    # --- MATERIALES & UTILITIES ---
+    "LIN", "NEE", "SHW"
+]
 
 # 2. PARÁMETROS DE ESTRATEGIA (Optimizados)
 SMA_FAST = 55            # Media Rápida
