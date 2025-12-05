@@ -29,18 +29,29 @@ class RiskManager:
         stop_loss = 0
         take_profit = 0
         
+        # Lógica para COMPRA (Long)
         if direction == "LONG":
             stop_loss = entry_price - (current_atr * atr_multiplier)
-            risk_per_share = entry_price - stop_loss
-            take_profit = entry_price + (risk_per_share * risk_reward_ratio)
+            risk = entry_price - stop_loss
+            take_profit = entry_price + (risk * risk_reward_ratio)
+            
+        # Lógica para VENTA EN CORTO (Short)
+        elif direction == "SHORT":
+            # En Short, el Stop Loss está POR ENCIMA del precio de entrada
+            stop_loss = entry_price + (current_atr * atr_multiplier)
+            # El riesgo es la distancia hacia arriba
+            risk = stop_loss - entry_price
+            # El Take Profit está POR DEBAJO (queremos que baje)
+            take_profit = entry_price - (risk * risk_reward_ratio)
             
         return {
             "entry": entry_price,
+            "direction": direction,
             "stop_loss": stop_loss,
             "take_profit": take_profit,
             "atr": current_atr,
-            "risk_per_share": entry_price - stop_loss,
-            "potential_gain": take_profit - entry_price,
+            "risk_per_share": risk,
+            "potential_gain": risk * risk_reward_ratio,
             "rr_ratio": risk_reward_ratio
         }
 
