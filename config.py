@@ -1,5 +1,18 @@
 # config.py
 # --- CONFIGURACIÓN GLOBAL DEL BOT ---
+import os
+import streamlit as st
+
+# Intentamos leer de Streamlit Secrets (Nube), si falla, leemos de variables de entorno (Local)
+def get_secret(key):
+    if hasattr(st, "secrets") and key in st.secrets:
+        return st.secrets[key]
+    return os.getenv(key, "TOKEN_NO_ENCONTRADO")
+
+# --- CREDENCIALES ---
+# YA NO ESCRIBIMOS EL TOKEN AQUÍ DIRECTAMENTE
+TELEGRAM_TOKEN = get_secret("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = get_secret("TELEGRAM_CHAT_ID")
 
 # 1. LISTA DE ACTIVOS (Portafolio)
 TICKERS = ["AMD", "NVDA", "MSFT", "GOOGL", "TSLA"]
@@ -14,8 +27,3 @@ STOP_LOSS_PCT = 0.10     # 10% Trailing Stop
 START_DATE = "2020-01-01"
 END_DATE = "2023-12-30"
 INITIAL_CAPITAL = 500
-
-# 4. CREDENCIALES DE TELEGRAM (¡Sin espacios al inicio!)
-# El token debe ir entre comillas
-TELEGRAM_TOKEN = "8579707511:AAFkItAYRefwmRMkqRBf_A_jcruvce4EVyU"
-TELEGRAM_CHAT_ID = "7277947502"
