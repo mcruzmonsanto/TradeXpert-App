@@ -5,3 +5,4 @@ plotly
 requests
 curl_cffi
 textblob
+numpy
