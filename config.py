@@ -23,6 +23,10 @@ SMA_SLOW = 90            # Media Lenta
 RSI_THRESHOLD = 70       # Límite de Sobrecompra
 STOP_LOSS_PCT = 0.10     # 10% Trailing Stop
 
+# ESTRATEGIA 2: REVERSIÓN A LA MEDIA (CAZAR REBOTES)
+RSI_OVERSOLD = 30       # Comprar si RSI baja de 30 (Pánico)
+RSI_EXIT_MEAN = 50      # Vender si RSI recupera 50 (Retorno a la media)
+
 # 3. CONFIGURACIÓN DE TIEMPO
 START_DATE = "2020-01-01"
 END_DATE = "2023-12-30"
