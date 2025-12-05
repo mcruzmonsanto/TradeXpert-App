@@ -17,24 +17,21 @@ sidebar_ticker = st.sidebar.selectbox("Selecciona un Activo:", cfg.TICKERS)
 st.sidebar.markdown(f"**Estrategia:** SMA {cfg.SMA_FAST}/{cfg.SMA_SLOW} + RSI < {cfg.RSI_THRESHOLD}")
 
 # --- FUNCIÓN DE CARGA DE DATOS (CON CACHÉ PARA VELOCIDAD) ---
-@st.cache_data(ttl=300) # Aumentamos el caché a 5 min para no molestar a Yahoo
+# app.py (Solo cambia la función get_data, el resto déjalo igual)
+
+@st.cache_data(ttl=300) 
 def get_data(symbol):
     try:
-        # CREAMOS UNA SESIÓN FALSA (EL DISFRAZ)
-        session = requests.Session()
-        session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        })
-        
-        # Le pasamos la sesión a yfinance
-        ticker = yf.Ticker(symbol, session=session)
+        # SIMPLIFICADO: Dejamos que yfinance maneje la sesión internamente
+        # Al tener 'curl_cffi' instalado en requirements.txt, yfinance lo usará automágicamente.
+        ticker = yf.Ticker(symbol)
         df = ticker.history(period="2y")
         
         if df.empty: 
-            st.warning(f"No se encontraron datos para {symbol}. Tal vez Yahoo está bloqueando temporalmente.")
+            st.warning(f"No se encontraron datos para {symbol}. Reintentando...")
             return None
         
-        # Indicadores (Tu lógica original)
+        # Indicadores
         df['SMA_Fast'] = df['Close'].rolling(window=cfg.SMA_FAST).mean()
         df['SMA_Slow'] = df['Close'].rolling(window=cfg.SMA_SLOW).mean()
         
@@ -48,7 +45,7 @@ def get_data(symbol):
         return df
 
     except Exception as e:
-        st.error(f"Error conectando con Yahoo Finance: {e}")
+        st.error(f"Error técnico: {e}")
         return None
 
 # --- LÓGICA PRINCIPAL ---
@@ -130,3 +127,4 @@ if st.button('🔄 Actualizar Análisis'):
     st.cache_data.clear()
 
     st.rerun()
+
