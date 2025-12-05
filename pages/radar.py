@@ -9,10 +9,18 @@ from classes.scout import AssetScout
 from classes.strategies import GoldenCrossStrategy, MeanReversionStrategy, BollingerBreakoutStrategy, MACDStrategy
 import config as cfg
 
-st.set_page_config(page_title="Radar Pro V3", layout="wide", page_icon="📡")
+st.set_page_config(page_title="Radar Pro V4", layout="wide", page_icon="📡")
 
-st.title("📡 Radar de Oportunidades: Escaneo Masivo V3")
-st.markdown("Auditoría en tiempo real. **Versión Corregida con Inyección de Señales.**")
+# --- ENCABEZADO Y FILTROS ---
+c1, c2 = st.columns([3, 1])
+with c1:
+    st.title("📡 Radar de Oportunidades")
+    st.markdown("Auditoría en tiempo real. **Detectando señales accionables.**")
+
+with c2:
+    st.markdown("### ⚙️ Filtros")
+    # POR DEFECTO: True (Solo queremos ver acción)
+    solo_accion = st.checkbox("Mostrar SOLO Señales de Entrada/Salida", value=True)
 
 if st.button("🚀 INICIAR ESCANEO GLOBAL"):
     
@@ -27,104 +35,115 @@ if st.button("🚀 INICIAR ESCANEO GLOBAL"):
         status_text.text(f"Auditando {ticker} ({i+1}/{total_assets})...")
         
         try:
-            # 1. Optimización (Scout busca la mejor estrategia)
+            # 1. Optimización
             scout = AssetScout(ticker)
             winner = scout.optimize()
             
-            # Verificamos que haya datos y un ganador
             if winner and scout.data is not None and not scout.data.empty:
-                df = scout.data.copy() # Trabajamos sobre una copia local segura
+                # TRABAJAMOS CON COPIA SEGURA
+                df = scout.data.copy()
                 strat_name = winner['Estrategia']
                 params = winner['Params']
                 
-                # 2. Instanciar estrategia ganadora
+                # 2. Instanciar estrategia
                 strat_obj = None
                 if "Golden Cross" in strat_name: strat_obj = GoldenCrossStrategy()
                 elif "Mean Reversion" in strat_name: strat_obj = MeanReversionStrategy()
                 elif "Bollinger" in strat_name: strat_obj = BollingerBreakoutStrategy()
                 elif "MACD" in strat_name: strat_obj = MACDStrategy()
                 
-                # --- CORRECCIÓN CRÍTICA AQUÍ ---
-                # Forzamos la generación de la columna 'Signal' en ESTE dataframe
+                # 3. Generar Señales (INYECCIÓN EXPLÍCITA)
                 df = strat_obj.generate_signals(df, params)
-                # -------------------------------
                 
-                # 3. Análisis de la Señal de HOY
+                # 4. Análisis de HOY
+                if 'Signal' not in df.columns: df['Signal'] = 0
+                
                 today = df.iloc[-1]
-                
-                # Protección: Si la estrategia falló en crear 'Signal', la creamos en 0
-                if 'Signal' not in df.columns:
-                    df['Signal'] = 0
-
-                signal_val = today['Signal'] # 1 (Activo) o 0 (Inactivo)
+                signal_val = today['Signal']
                 
                 tipo = "NEUTRO"
                 detalle = ""
                 
-                # A) LÓGICA DE DETECCIÓN DE COMPRA/MANTENER
+                # --- CLASIFICACIÓN DE SEÑALES ---
+                
+                # A) Lógica de COMPRA / MANTENER
                 if signal_val == 1:
-                    # Por defecto es mantener, pero afinamos el texto
-                    tipo = "MANTENER TENDENCIA" 
+                    tipo = "MANTENER TENDENCIA" # Base
                     
                     if "Mean Reversion" in strat_name:
                         tipo = "COMPRA (REBOTE)"
-                        detalle = f"RSI en zona baja ({today['RSI']:.1f})"
-                    elif "Golden Cross" in strat_name:
-                        detalle = f"Tendencia Alcista Activa"
-                    elif "Bollinger" in strat_name:
-                        detalle = f"Precio sobre Banda Superior"
+                        detalle = f"RSI {today['RSI']:.1f}"
                     elif "MACD" in strat_name:
-                        # Si es MACD, el Auto-Pilot decía COMPRA, así que aquí también
-                        tipo = "COMPRA / MOMENTUM" 
-                        detalle = "MACD > Signal Line"
+                        # MACD suele ser una señal de momentum continuo, lo dejamos como compra/acción
+                        tipo = "COMPRA / MOMENTUM"
+                        detalle = "MACD > Signal"
+                    elif "Bollinger" in strat_name:
+                        detalle = "Sobre Banda Sup"
+                    elif "Golden Cross" in strat_name:
+                        detalle = f"Tendencia Alcista"
 
-                    # Detección de entrada FRESCA (Cruce hoy)
-                    # Si ayer era 0 y hoy es 1, es una entrada nueva (¡Prioridad!)
+                    # Detección de ENTRADA FRESCA (Cruce hoy)
+                    # Si ayer era 0 y hoy es 1, es la señal más importante
                     if df['Signal'].iloc[-2] == 0:
                         tipo = "🔔 ¡ENTRADA NUEVA HOY!"
 
-                # B) LÓGICA DE VENTA (Solo para Mean Reversion por ahora)
+                # B) Lógica de VENTA (Mean Reversion)
                 elif "Mean Reversion" in strat_name:
                     if today['RSI'] > params['rsi_high']:
                         tipo = "VENTA (TAKE PROFIT)"
-                        detalle = f"Sobrecompra RSI {today['RSI']:.1f}"
+                        detalle = f"Sobrecompra {today['RSI']:.1f}"
 
-                # 4. GUARDAR RESULTADO
-                # Guardamos todo lo que NO sea NEUTRO
+                # --- 5. FILTRO INTELIGENTE (TU PETICIÓN) ---
+                agregar = False
+                
                 if tipo != "NEUTRO":
+                    if solo_accion:
+                        # FILTRO ACTIVADO: Solo mostramos si dice COMPRA, VENTA, ENTRADA o MOMENTUM
+                        keywords_accion = ["COMPRA", "VENTA", "ENTRADA", "MOMENTUM"]
+                        if any(k in tipo for k in keywords_accion):
+                            agregar = True
+                    else:
+                        # FILTRO DESACTIVADO: Mostramos todo (incluido MANTENER)
+                        agregar = True
+
+                if agregar:
                     oportunidades.append({
                         "Ticker": ticker,
-                        "Estrategia": strat_name,
                         "Acción": tipo,
+                        "Estrategia": strat_name,
                         "Detalle": detalle,
                         "Precio": f"${today['Close']:.2f}",
                         "Sharpe": f"{winner['Sharpe']:.2f}"
                     })
                     
-                    # Mostrar en vivo (Feedback visual)
-                    icon = "🟢" if "COMPRA" in tipo or "ENTRADA" in tipo else "🔵" if "MANTENER" in tipo else "🔴"
-                    live_results.markdown(f"{icon} **{ticker}**: {tipo} ({strat_name})")
+                    # Feedback visual en tiempo real
+                    icon = "🟢" if "COMPRA" in tipo or "ENTRADA" in tipo else "🔴" if "VENTA" in tipo else "🔵"
+                    live_results.markdown(f"{icon} **{ticker}**: {tipo}")
 
         except Exception as e:
-            # Mostrar el error en pantalla para depurar si vuelve a pasar
-            st.error(f"Error procesando {ticker}: {e}")
+            # st.error(f"Error {ticker}: {e}") # Comentado para limpiar interfaz
+            pass
             
         progress_bar.progress((i + 1) / total_assets)
     
-    status_text.text("✅ Escaneo Finalizado.")
+    status_text.text("✅ Auditoría completada.")
     progress_bar.empty()
 
-    # --- TABLA FINAL ---
+    # --- TABLA DE RESULTADOS ---
     st.markdown("---")
     if oportunidades:
-        st.subheader(f"📋 Resultados: {len(oportunidades)} Señales Encontradas")
+        st.subheader(f"🎯 Oportunidades Detectadas ({len(oportunidades)})")
         df_ops = pd.DataFrame(oportunidades)
         
         def color_highlight(val):
             if 'ENTRADA' in val or 'COMPRA' in val: return 'color: green; font-weight: bold'
             if 'VENTA' in val: return 'color: red; font-weight: bold'
-            return 'color: blue'
+            return 'color: blue' # Para Mantener
             
         st.dataframe(df_ops.style.applymap(color_highlight, subset=['Acción']), use_container_width=True)
     else:
-        st.warning("El escáner funcionó correctamente, pero no encontró señales activas bajo los parámetros actuales.")
+        if solo_accion:
+            st.success("✅ Todo tranquilo. No hay nuevas señales de Compra/Venta urgentes hoy.")
+            st.info("Prueba desmarcar la casilla 'Mostrar SOLO Señales' para ver tus posiciones abiertas.")
+        else:
+            st.warning("Mercado Neutro (Sin señales activas).")
