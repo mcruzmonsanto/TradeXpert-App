@@ -6,22 +6,22 @@ import plotly.graph_objects as go
 import config as cfg
 import sys
 
-# TRUCO: Permitir importar desde la carpeta strategies
+# Importamos nuestros módulos (Estrategias y Sentimiento)
 sys.path.append('.') 
 from strategies.mean_reversion import detect_bounce_play
+from utils.news_sentiment import get_market_sentiment
 
-# --- CONFIGURACIÓN VISUAL ---
-st.set_page_config(page_title="TradeXpert Pro", layout="wide", page_icon="⚡")
-st.title("⚡ TradeXpert Pro: Tablero Multi-Estrategia")
+# --- CONFIGURACIÓN ---
+st.set_page_config(page_title="TradeXpert IA", layout="wide", page_icon="🧠")
+st.title("🧠 TradeXpert IA: Técnico + Fundamental")
 st.markdown("---")
 
-# BARRA LATERAL
-sidebar_ticker = st.sidebar.selectbox("Selecciona un Activo:", cfg.TICKERS)
-st.sidebar.markdown("### 🧠 Estrategias Activas")
-st.sidebar.info(f"1. **Tendencia (Golden Cross):**\nSMA {cfg.SMA_FAST} vs {cfg.SMA_SLOW}")
-st.sidebar.info(f"2. **Rebote (Mean Reversion):**\nRSI < {cfg.RSI_OVERSOLD}")
+# Sidebar
+sidebar_ticker = st.sidebar.selectbox("Selecciona Activo:", cfg.TICKERS)
+st.sidebar.markdown("---")
+st.sidebar.info("🤖 **IA Activada:**\nLeyendo noticias en tiempo real para filtrar entradas falsas.")
 
-# --- FUNCIÓN DE DATOS (BLINDADA) ---
+# --- FUNCIÓN DE DATOS ---
 @st.cache_data(ttl=300)
 def get_data(symbol):
     try:
@@ -29,11 +29,10 @@ def get_data(symbol):
         df = ticker.history(period="2y")
         if df.empty: return None
         
-        # CÁLCULOS TÉCNICOS
+        # Indicadores
         df['SMA_Fast'] = df['Close'].rolling(window=cfg.SMA_FAST).mean()
         df['SMA_Slow'] = df['Close'].rolling(window=cfg.SMA_SLOW).mean()
         
-        # RSI
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -41,63 +40,74 @@ def get_data(symbol):
         df['RSI'] = 100 - (100 / (1 + rs))
         
         return df
-    except Exception:
-        return None
+    except Exception: return None
 
-# --- MOTOR PRINCIPAL ---
+# --- CARGA DE DATOS ---
 df = get_data(sidebar_ticker)
+
+# --- ANÁLISIS DE SENTIMIENTO (IA) ---
+# No usamos caché aquí porque las noticias cambian rápido
+with st.spinner(f"Leyendo noticias sobre {sidebar_ticker}..."):
+    sentiment_data = get_market_sentiment(sidebar_ticker)
 
 if df is not None:
     today = df.iloc[-1]
     
-    # ANÁLISIS 1: TENDENCIA (Tu Golden Cross)
+    # Análisis Técnico
     trend = "ALCISTA 🐂" if today['SMA_Fast'] > today['SMA_Slow'] else "BAJISTA 🐻"
-    
-    # ANÁLISIS 2: REBOTE (La nueva estrategia importada)
     analisis_rebote = detect_bounce_play(df, cfg.RSI_OVERSOLD)
+    
+    # --- FILTRO DE IA (SENTIMIENTO) ---
+    # Si la estrategia de Rebote dice COMPRA, pero las noticias son MUY NEGATIVAS, la IA bloquea la señal.
+    advertencia_ia = ""
+    if "COMPRA" in analisis_rebote['signal'] or "OPORTUNIDAD" in analisis_rebote['signal']:
+        if sentiment_data['score'] < -0.15: # Noticias muy malas
+            analisis_rebote['signal'] = "BLOQUEADO POR IA 🛡️"
+            analisis_rebote['color'] = "orange"
+            analisis_rebote['reason'] = "Rebote técnico detectado, pero noticias muy negativas (Riesgo de caída)."
+            advertencia_ia = "⚠️ **CUIDADO:** El análisis técnico sugiere compra, pero el fundamental es negativo."
 
-    # --- MÉTRICAS ---
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Precio Actual", f"${today['Close']:.2f}", f"{today['Close'] - df.iloc[-2]['Close']:.2f}")
-    col2.metric("RSI", f"{today['RSI']:.2f}")
-    col3.metric("Tendencia (Largo Plazo)", trend)
-    col4.markdown(f"**Señal Corto Plazo:**\n:{analisis_rebote['color']}[{analisis_rebote['signal']}]")
+    # --- VISUALIZACIÓN DE KPIs ---
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Precio", f"${today['Close']:.2f}", f"{today['Close'] - df.iloc[-2]['Close']:.2f}")
+    c2.metric("RSI (Técnico)", f"{today['RSI']:.2f}")
+    c3.metric("Sentimiento (IA)", sentiment_data['status'], delta=f"{sentiment_data['score']:.2f}")
+    c4.markdown(f"**Decisión Final:**\n:{analisis_rebote['color']}[{analisis_rebote['signal']}]")
+
+    if advertencia_ia:
+        st.warning(advertencia_ia)
 
     st.markdown("---")
-
-    # --- SEMÁFOROS DE DECISIÓN ---
-    c1, c2 = st.columns(2)
-    with c1:
-        st.subheader("🔭 Inversión (Trend Following)")
-        if trend == "ALCISTA 🐂" and today['RSI'] < 70:
-            st.success("✅ MANTENER / COMPRAR")
+    
+    # --- PANELES DE DETALLE ---
+    col_izq, col_der = st.columns(2)
+    
+    with col_izq:
+        st.subheader(f"📰 Noticias Recientes ({sidebar_ticker})")
+        if sentiment_data['headlines']:
+            for news in sentiment_data['headlines']:
+                st.markdown(f"• [{news['title']}]({news['url']})")
         else:
-            st.warning("⚠️ ESPERAR / PRECAUCIÓN")
+            st.info("No se encontraron noticias recientes.")
             
-    with c2:
-        st.subheader("💎 Trading Rápido (Rebote)")
-        if analisis_rebote['color'] == 'green':
-            st.success(f"🚀 {analisis_rebote['reason']}")
-        elif analisis_rebote['color'] == 'red':
-            st.error(f"📉 {analisis_rebote['reason']}")
-        else:
-            st.info("😴 Sin oportunidad de rebote")
-
+    with col_der:
+        st.subheader("💎 Análisis de Rebote")
+        st.info(f"Razón: {analisis_rebote['reason']}")
+        
     # --- GRÁFICO ---
-    st.subheader(f"Gráfico Técnico: {sidebar_ticker}")
+    st.subheader("Gráfico Técnico")
     fig = go.Figure()
     fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Precio'))
-    fig.add_trace(go.Scatter(x=df.index, y=df['SMA_Fast'], line=dict(color='orange', width=1), name='SMA Rápida'))
-    fig.add_trace(go.Scatter(x=df.index, y=df['SMA_Slow'], line=dict(color='blue', width=2), name='SMA Lenta'))
+    fig.add_trace(go.Scatter(x=df.index, y=df['SMA_Fast'], line=dict(color='orange', width=1), name='SMA 55'))
+    fig.add_trace(go.Scatter(x=df.index, y=df['SMA_Slow'], line=dict(color='blue', width=2), name='SMA 90'))
     
-    # Marcar los puntos de rebote en el gráfico (Diamantes)
+    # Marcadores de Rebote
     rebotes = df[df['RSI'] < cfg.RSI_OVERSOLD]
-    fig.add_trace(go.Scatter(x=rebotes.index, y=rebotes['Close'], mode='markers', 
-                             marker=dict(color='purple', size=8, symbol='diamond'), name='Zona de Rebote'))
+    fig.add_trace(go.Scatter(x=rebotes.index, y=rebotes['Close'], mode='markers', marker=dict(color='purple', size=8, symbol='diamond'), name='Zona Rebote'))
 
     fig.update_layout(height=500, xaxis_rangeslider_visible=False, template="plotly_dark")
     st.plotly_chart(fig, use_container_width=True)
 
 else:
-    st.error("Esperando datos... Si esto persiste, recarga la página.")
+    st.error("Error cargando datos.")
     if st.button("Recargar"): st.rerun()
