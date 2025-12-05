@@ -66,3 +66,9 @@ RSI_EXIT_MEAN = 50      # Vender si RSI recupera 50 (Retorno a la media)
 START_DATE = "2020-01-01"
 END_DATE = "2023-12-30"
 INITIAL_CAPITAL = 500
+
+# --- GESTIÓN DE CAPITAL ---
+CAPITAL_TOTAL = 10000       # Tu capital total en el Broker (USD)
+RIESGO_POR_OPERACION = 0.02 # Arriesgar solo el 2% del capital por trade (Estándar Profesional)
+ATR_MULTIPLIER = 1.5        # Qué tan lejos poner el Stop (1.5 veces la volatilidad es normal)
+RR_RATIO = 2.0              # Buscamos ganar el doble de lo que arriesgamos
