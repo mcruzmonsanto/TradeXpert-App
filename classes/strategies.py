@@ -3,35 +3,53 @@ import pandas as pd
 import numpy as np
 from abc import ABC, abstractmethod
 
-# --- CLASE PADRE (PLANTILLA) ---
+# --- CLASE PADRE MEJORADA ---
 class BaseStrategy(ABC):
     def __init__(self, name):
         self.name = name
-        self.best_params = {}
-        self.best_performance = -np.inf
 
     @abstractmethod
     def generate_signals(self, df, params):
-        """Método que cada estrategia debe implementar a su manera"""
         pass
 
     def backtest(self, df, params):
-        """Motor de Backtest universal para cualquier estrategia"""
-        if df.empty: return -np.inf
+        """
+        Retorna un DICCIONARIO completo con métricas de riesgo.
+        """
+        if df.empty: return {"return": -np.inf, "sharpe": 0, "drawdown": 0}
         
-        # Copia para no alterar original
         data = df.copy()
-        
-        # 1. Generar Señales (Polimorfismo: llama a la versión de la hija)
         data = self.generate_signals(data, params)
         
-        # 2. Calcular Retornos
+        # Cálculos de Retorno
         data['Market_Return'] = data['Close'].pct_change()
         data['Strategy_Return'] = data['Market_Return'] * data['Signal'].shift(1)
         
-        # 3. Calcular Rendimiento Acumulado
-        total_return = (1 + data['Strategy_Return']).cumprod().iloc[-1] - 1
-        return total_return
+        # 1. Retorno Total Acumulado
+        equity_curve = (1 + data['Strategy_Return']).cumprod()
+        total_return = equity_curve.iloc[-1] - 1
+        
+        # 2. Max Drawdown (El dolor máximo)
+        peak = equity_curve.cummax()
+        drawdown = (equity_curve - peak) / peak
+        max_drawdown = drawdown.min() # Será un número negativo (ej: -0.30)
+        
+        # 3. Sharpe Ratio (Rentabilidad ajustada al riesgo)
+        # Asumimos 252 días de trading al año. Risk Free Rate = 0 simplificado.
+        mean_return = data['Strategy_Return'].mean()
+        std_return = data['Strategy_Return'].std()
+        
+        if std_return == 0:
+            sharpe = 0
+        else:
+            sharpe = (mean_return / std_return) * (252 ** 0.5)
+            
+        return {
+            "return": total_return,
+            "sharpe": sharpe,
+            "drawdown": max_drawdown,
+            "equity_curve": equity_curve # Guardamos la curva por si queremos graficarla
+        }
 
 # --- ESTRATEGIA 1: GOLDEN CROSS (TENDENCIA) ---
 class GoldenCrossStrategy(BaseStrategy):
