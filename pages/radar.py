@@ -7,48 +7,29 @@ from datetime import datetime
 
 sys.path.append('.') 
 from classes.scout import AssetScout
+# Importamos las Clásicas
 from classes.strategies import (
     GoldenCrossStrategy, MeanReversionStrategy, BollingerBreakoutStrategy, 
     MACDStrategy, EMAStrategy, StochRSIStrategy, AwesomeOscillatorStrategy
 )
+# Importamos las PRO (NUEVO)
+from classes.strategies_pro import SuperTrendStrategy, SqueezeMomentumStrategy, ADXStrategy
 from classes.risk_manager import RiskManager
 import config as cfg
 
-st.set_page_config(page_title="Radar & Ejecución", layout="wide", page_icon="📡")
+st.set_page_config(page_title="Radar Pro V11", layout="wide", page_icon="📡")
 
-# --- BARRA LATERAL (CONTROLES DE DINERO) ---
+# --- BARRA LATERAL (CONTROLES) ---
 st.sidebar.header("💰 Gestión de Capital")
-
-# 1. Input para modificar Capital (Por defecto carga el de config.py)
-capital_dinamico = st.sidebar.number_input(
-    "Capital Disponible ($)", 
-    min_value=100.0, 
-    max_value=1000000.0, 
-    value=float(cfg.CAPITAL_TOTAL), 
-    step=500.0,
-    help="Dinero total en tu cuenta de broker para calcular el tamaño de posición."
-)
-
-# 2. Input para modificar Riesgo (Slider de 0.5% a 10%)
-riesgo_pct = st.sidebar.slider(
-    "Riesgo por Operación (%)", 
-    min_value=0.5, 
-    max_value=10.0, 
-    value=float(cfg.RIESGO_POR_OPERACION * 100), 
-    step=0.5,
-    help="Porcentaje de tu capital que estás dispuesto a perder si toca el Stop Loss."
-)
-# Convertimos el porcentaje visual (ej: 2.0) a decimal matemático (0.02)
+capital_dinamico = st.sidebar.number_input("Capital ($)", 100.0, 1000000.0, float(cfg.CAPITAL_TOTAL), 500.0)
+riesgo_pct = st.sidebar.slider("Riesgo (%)", 0.5, 10.0, float(cfg.RIESGO_POR_OPERACION * 100), 0.5)
 riesgo_decimal = riesgo_pct / 100.0
 
-
-# --- FUNCIÓN DE GUARDADO (DATABASE) ---
+# --- BASE DE DATOS ---
 LOG_FILE = "data/bitacora_trades.csv"
 
 def guardar_trade(trade_dict):
-    if not os.path.exists("data"):
-        os.makedirs("data")
-        
+    if not os.path.exists("data"): os.makedirs("data")
     if os.path.exists(LOG_FILE):
         df_log = pd.read_csv(LOG_FILE)
     else:
@@ -59,22 +40,18 @@ def guardar_trade(trade_dict):
     df_log.to_csv(LOG_FILE, index=False)
     return True
 
-# --- INTERFAZ PRINCIPAL ---
+# --- INTERFAZ ---
 c1, c2 = st.columns([3, 1])
 with c1:
-    st.title("📡 Radar: Ejecución y Registro")
-    # Mostramos los valores dinámicos que seleccionó el usuario
+    st.title("📡 Radar: Centro de Mando Pro")
     st.markdown(f"Capital: **${capital_dinamico:,.2f}** | Riesgo: **{riesgo_pct}%**")
-    
-    # Cálculo rápido de cuánto es el dinero en riesgo
-    dinero_en_riesgo = capital_dinamico * riesgo_decimal
-    st.caption(f"🔥 Estás arriesgando máximo **${dinero_en_riesgo:.2f}** por operación.")
+    st.caption("Escaneando con 10 Motores de Inteligencia Artificial")
 
 with c2:
     st.markdown("### ⚙️ Filtros")
     solo_accion = st.checkbox("Ocultar 'Mantener'", value=True)
 
-if st.button("🚀 INICIAR ESCANEO Y EJECUCIÓN"):
+if st.button("🚀 INICIAR ESCANEO PRO"):
     
     st.markdown("---")
     progress_bar = st.progress(0)
@@ -88,7 +65,6 @@ if st.button("🚀 INICIAR ESCANEO Y EJECUCIÓN"):
         status_text.text(f"Analizando {ticker} ({i+1}/{total_assets})...")
         
         try:
-            # 1. Optimización (Usando el mapa rápido de config)
             scout = AssetScout(ticker)
             winner = scout.optimize()
             
@@ -97,7 +73,7 @@ if st.button("🚀 INICIAR ESCANEO Y EJECUCIÓN"):
                 strat_name = winner['Estrategia']
                 params = winner['Params']
                 
-                # 2. Instanciar
+                # --- INSTANCIADOR INTELIGENTE (10 MOTORES) ---
                 strat_obj = None
                 if "Golden Cross" in strat_name: strat_obj = GoldenCrossStrategy()
                 elif "Mean Reversion" in strat_name: strat_obj = MeanReversionStrategy()
@@ -106,6 +82,10 @@ if st.button("🚀 INICIAR ESCANEO Y EJECUCIÓN"):
                 elif "EMA" in strat_name: strat_obj = EMAStrategy()
                 elif "Stochastic" in strat_name: strat_obj = StochRSIStrategy()
                 elif "Awesome" in strat_name: strat_obj = AwesomeOscillatorStrategy()
+                # Nuevas PRO
+                elif "SuperTrend" in strat_name: strat_obj = SuperTrendStrategy()
+                elif "Squeeze" in strat_name: strat_obj = SqueezeMomentumStrategy()
+                elif "ADX" in strat_name: strat_obj = ADXStrategy()
                 
                 df = strat_obj.generate_signals(df, params)
                 if 'Signal' not in df.columns: df['Signal'] = 0
@@ -118,34 +98,69 @@ if st.button("🚀 INICIAR ESCANEO Y EJECUCIÓN"):
                 direction = "NONE"
                 es_oportunidad_valida = False
                 
-                # --- CLASIFICACIÓN ---
+                # --- CLASIFICACIÓN DE SEÑALES ---
+                
+                # A) LÓGICA LONG (COMPRA)
                 if signal_val == 1:
                     is_new = (prev['Signal'] == 0)
+                    
+                    # Estrategias Clásicas
                     if "Golden Cross" in strat_name:
                         if is_new: tipo, direction, es_oportunidad_valida = "ENTRADA CRUCE", "LONG", True
-                        else: tipo = "MANTENER"
-                    elif "Bollinger" in strat_name:
-                        if is_new: tipo, direction, es_oportunidad_valida = "ENTRADA RUPTURA", "LONG", True
-                        else: tipo = "MANTENER"
+                        else: tipo = "MANTENER TENDENCIA"
                     elif "Mean Reversion" in strat_name:
                         tipo, direction, es_oportunidad_valida = "ENTRADA REBOTE", "LONG", True
                     elif "MACD" in strat_name:
                         tipo, direction, es_oportunidad_valida = "ENTRADA MOMENTUM", "LONG", True
                     elif "EMA" in strat_name:
                         if is_new: tipo, direction, es_oportunidad_valida = "ENTRADA EMA", "LONG", True
-                        else: tipo = "MANTENER"
+                        else: tipo = "MANTENER EMA"
                     elif "Stochastic" in strat_name:
                         if is_new and today['Stoch_K'] < 50: tipo, direction, es_oportunidad_valida = "ENTRADA STOCH", "LONG", True
-                        else: tipo = "MANTENER"
+                        else: tipo = "MANTENER STOCH"
                     elif "Awesome" in strat_name:
                         if is_new: tipo, direction, es_oportunidad_valida = "ENTRADA AO", "LONG", True
-                        else: tipo = "MANTENER"
+                        else: tipo = "MANTENER AO"
+                    
+                    # Estrategias PRO
+                    elif "SuperTrend" in strat_name:
+                        if is_new: tipo, direction, es_oportunidad_valida = "CAMBIO TENDENCIA (SUPER)", "LONG", True
+                        else: tipo = "MANTENER SUPERTREND"
+                    elif "Squeeze" in strat_name:
+                        if is_new: tipo, direction, es_oportunidad_valida = "DISPARO SQUEEZE 🔥", "LONG", True
+                        else: tipo = "MANTENER SQUEEZE"
+                    elif "ADX" in strat_name:
+                        if is_new: tipo, direction, es_oportunidad_valida = "INICIO TENDENCIA FUERTE", "LONG", True
+                        else: tipo = "MANTENER TENDENCIA ADX"
+                    elif "Bollinger" in strat_name:
+                        if is_new: tipo, direction, es_oportunidad_valida = "RUPTURA ALCISTA", "LONG", True
+                        else: tipo = "MANTENER RUPTURA"
 
+                # B) LÓGICA SHORT (VENTA)
                 elif signal_val == 0:
+                    # Mean Reversion Short
                     if "Mean Reversion" in strat_name and today['RSI'] > params['rsi_high']:
-                        tipo, direction, es_oportunidad_valida = "ENTRADA SHORT", "SHORT", True
+                        tipo, direction, es_oportunidad_valida = "ENTRADA SHORT (SOBRECOMPRA)", "SHORT", True
+                    
+                    # Stoch Short
                     elif "Stochastic" in strat_name and today['Stoch_K'] > 80 and today['Stoch_K'] < today['Stoch_D']:
-                        tipo, direction, es_oportunidad_valida = "ENTRADA SHORT", "SHORT", True
+                        tipo, direction, es_oportunidad_valida = "ENTRADA SHORT (STOCH)", "SHORT", True
+                    
+                    # EMA Short
+                    elif "EMA" in strat_name:
+                        ema_fast = df['EMA_Fast'].iloc[-1]
+                        ema_slow = df['EMA_Slow'].iloc[-1]
+                        if ema_fast < ema_slow and df['EMA_Fast'].iloc[-2] >= df['EMA_Slow'].iloc[-2]:
+                            tipo, direction, es_oportunidad_valida = "ENTRADA SHORT (EMA)", "SHORT", True
+
+                    # SuperTrend Short
+                    elif "SuperTrend" in strat_name and prev['Signal'] == 1:
+                        tipo, direction, es_oportunidad_valida = "CAMBIO TENDENCIA (SHORT)", "SHORT", True
+
+                    # Squeeze Short (Momentum negativo)
+                    elif "Squeeze" in strat_name:
+                        if df['Momentum'].iloc[-1] < 0 and df['Momentum'].iloc[-2] >= 0:
+                            tipo, direction, es_oportunidad_valida = "MOMENTUM BAJISTA", "SHORT", True
 
                 # --- RENDERIZADO ---
                 mostrar = False
@@ -156,7 +171,7 @@ if st.button("🚀 INICIAR ESCANEO Y EJECUCIÓN"):
                 if mostrar:
                     conteo += 1
                     
-                    # Riesgo
+                    # Cálculo de Riesgo
                     risk_mgr = RiskManager(df)
                     setup = risk_mgr.get_trade_setup(
                         entry_price=today['Close'], 
@@ -170,7 +185,6 @@ if st.button("🚀 INICIAR ESCANEO Y EJECUCIÓN"):
                     sl, tp = 0.0, 0.0
                     
                     if setup and es_oportunidad_valida:
-                        # USAMOS LOS VALORES DINÁMICOS DE LA BARRA LATERAL
                         units = risk_mgr.calculate_position_size(capital_dinamico, riesgo_decimal, setup)
                         inv = units * today['Close']
                         sl = setup['stop_loss']
@@ -189,7 +203,7 @@ if st.button("🚀 INICIAR ESCANEO Y EJECUCIÓN"):
                                 if es_oportunidad_valida:
                                     st.markdown(f"""
                                     **EJECUCIÓN {direction}:**
-                                    * 📦 Unidades: **{units:.4f}** (Inv: ${inv:.2f})
+                                    * 📦 Unidades: **{units:.4f}** (Inv: ${inv:,.2f})
                                     * 🛡️ Stop Loss: **${sl:.2f}**
                                     * 🎯 Take Profit: **${tp:.2f}**
                                     """)
@@ -199,7 +213,7 @@ if st.button("🚀 INICIAR ESCANEO Y EJECUCIÓN"):
                                 st.write("")
                                 if es_oportunidad_valida:
                                     # BOTÓN DE REGISTRO
-                                    btn_key = f"save_{ticker}_{datetime.now().strftime('%H%M')}"
+                                    btn_key = f"save_{ticker}_{datetime.now().strftime('%H%M%S')}"
                                     if st.button(f"💾 Registrar", key=btn_key, type="primary"):
                                         trade_data = {
                                             "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -216,10 +230,11 @@ if st.button("🚀 INICIAR ESCANEO Y EJECUCIÓN"):
                                             "Resultado": 0.0
                                         }
                                         guardar_trade(trade_data)
-                                        st.toast(f"✅ Orden de {ticker} guardada en Bitácora!")
+                                        st.toast(f"✅ Orden de {ticker} guardada!")
 
         except Exception as e:
-            pass 
+            # pass 
+            st.error(f"Error en {ticker}: {e}")
             
         progress_bar.progress((i + 1) / total_assets)
     
@@ -227,4 +242,4 @@ if st.button("🚀 INICIAR ESCANEO Y EJECUCIÓN"):
     progress_bar.empty()
     
     if conteo == 0:
-        st.info("Sin señales activas hoy.")
+        st.info("Sin señales activas hoy. El mercado está decidiendo dirección.")
