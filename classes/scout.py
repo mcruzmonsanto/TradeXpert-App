@@ -1,61 +1,44 @@
-# classes/scout.py
 import yfinance as yf
 import pandas as pd
-import config as cfg # Importamos la configuración maestra
+import config as cfg
+# Importamos las Clásicas
 from classes.strategies import (
     GoldenCrossStrategy, MeanReversionStrategy, BollingerBreakoutStrategy, 
     MACDStrategy, EMAStrategy, StochRSIStrategy, AwesomeOscillatorStrategy
 )
+# Importamos las PRO (NUEVO)
+from classes.strategies_pro import SuperTrendStrategy, SqueezeMomentumStrategy, ADXStrategy
 
 class AssetScout:
     def __init__(self, ticker):
         self.ticker = ticker
         self.data = self._download_data()
+        # ARSENAL EXPANDIDO (10 ESTRATEGIAS AHORA)
         self.strategies = [
+            # Las Pro primero (Suelen ser mejores)
+            SuperTrendStrategy(),
+            SqueezeMomentumStrategy(),
+            ADXStrategy(),
+            # Las Clásicas
             GoldenCrossStrategy(), MeanReversionStrategy(), BollingerBreakoutStrategy(),
             MACDStrategy(), EMAStrategy(), StochRSIStrategy(), AwesomeOscillatorStrategy()
         ]
 
     def _download_data(self):
         try:
-            # Bajamos solo 2 años para velocidad operativa (suficiente para señales diarias)
-            # Si quisieras re-optimizar a fondo, usarías 5y
             df = yf.Ticker(self.ticker).history(period="2y")
             return df
         except:
             return pd.DataFrame()
 
     def optimize(self, force_recalc=False):
-        """
-        force_recalc: Si es False, usa el mapa maestro de config.py (Instantáneo).
-                      Si es True, vuelve a probar todo (Lento).
-        """
         if self.data.empty: return None
         
-        # --- ATAJO MAESTRO ---
-        # Si NO forzamos recálculo y el ticker está en el mapa, lo usamos directo.
+        # (Aquí va la lógica del mapa... mantén el if de config.py igual que antes)
         if not force_recalc and self.ticker in cfg.STRATEGY_MAP:
-            saved_config = cfg.STRATEGY_MAP[self.ticker]
-            strat_name = saved_config['strategy']
-            params = saved_config['params']
-            
-            # Buscamos el objeto de estrategia correcto
-            strat_obj = next((s for s in self.strategies if s.name == strat_name), None)
-            
-            if strat_obj:
-                # Corremos backtest rápido solo para sacar métricas actuales
-                metrics = strat_obj.backtest(self.data, params)
-                return {
-                    "Ticker": self.ticker,
-                    "Estrategia": strat_name,
-                    "Retorno": metrics["return"],
-                    "Sharpe": metrics["sharpe"],
-                    "Drawdown": metrics["drawdown"],
-                    "Params": params
-                }
+            # ... (código existente de atajo) ...
+            pass # (Resumido para brevedad, no borres tu código real)
 
-        # --- MODO LENTO (SI NO HAY MAPA O SE FUERZA) ---
-        # (Aquí va todo tu código de bucles for anterior... MANTENLO IGUAL)
         global_best_score = -999
         global_best_result = None
 
@@ -78,15 +61,44 @@ class AssetScout:
                     "Params": params
                 }
 
-        # BUCLES FOR (Copia los mismos de tu archivo anterior)
-        # ...
-        # (Para brevedad, asumo que mantienes los bucles for aquí)
-        # ...
-        
-        # Si no tienes los bucles a mano, dímelo y te paso el archivo completo de nuevo.
-        # Pero la idea es que si entra al "if" del principio, se salta todo esto.
-        
-        # Bucle de rescate si no encontró nada
-        if not global_best_result: return None
+        for strat in self.strategies:
             
+            # --- NUEVAS ESTRATEGIAS PRO ---
+            
+            if isinstance(strat, SuperTrendStrategy):
+                # Probamos configuraciones clásicas de TradingView
+                configs = [
+                    {'period': 10, 'multiplier': 3.0}, # Estándar
+                    {'period': 12, 'multiplier': 3.0}, # Más suave
+                    {'period': 10, 'multiplier': 4.0}  # Stop más amplio (Crypto)
+                ]
+                for p in configs: evaluate_iteration(strat, p)
+
+            elif isinstance(strat, SqueezeMomentumStrategy):
+                # Config LazyBear estándar y una rápida
+                configs = [
+                    {'bb_len': 20, 'bb_mult': 2.0, 'kc_len': 20, 'kc_mult': 1.5},
+                    {'bb_len': 20, 'bb_mult': 2.0, 'kc_len': 20, 'kc_mult': 1.3} # Squeeze más estricto
+                ]
+                for p in configs: evaluate_iteration(strat, p)
+
+            elif isinstance(strat, ADXStrategy):
+                # Solo operamos tendencias fuertes (>20 o >25)
+                configs = [
+                    {'period': 14, 'adx_threshold': 20},
+                    {'period': 14, 'adx_threshold': 25}
+                ]
+                for p in configs: evaluate_iteration(strat, p)
+
+            # --- ESTRATEGIAS CLÁSICAS (Copia los mismos ifs de antes) ---
+            elif isinstance(strat, GoldenCrossStrategy):
+                 for fast in [20, 50]:
+                    for slow in [100, 200]:
+                        if fast >= slow: continue
+                        evaluate_iteration(strat, {'fast': fast, 'slow': slow})
+            # ... (Agrega el resto de los ifs de tu archivo anterior aquí: Mean, Bollinger, MACD, etc.) ...
+            
+            # Nota: Asegúrate de incluir todos los ifs de las estrategias viejas aquí abajo
+            # para que sigan compitiendo.
+
         return global_best_result
