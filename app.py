@@ -7,6 +7,11 @@ import sys
 # Importamos el cerebro OOP
 sys.path.append('.') 
 from classes.scout import AssetScout
+# Importamos TODAS las estrategias para poder instanciarlas
+from classes.strategies import (
+    GoldenCrossStrategy, MeanReversionStrategy, BollingerBreakoutStrategy, 
+    MACDStrategy, EMAStrategy, StochRSIStrategy, AwesomeOscillatorStrategy
+)
 import config as cfg
 
 st.set_page_config(page_title="TradeXpert Auto-Pilot", layout="wide", page_icon="⚡")
@@ -19,33 +24,29 @@ st.markdown("---")
 ticker = st.sidebar.selectbox("Selecciona Activo:", cfg.TICKERS)
 
 # 2. CEREBRO: OPTIMIZACIÓN EN TIEMPO REAL
-# Usamos caché para que si cambias de activo y vuelves, no recalcule
-@st.cache_data(ttl=3600) # Guarda la optimización por 1 hora
+@st.cache_data(ttl=3600)
 def get_best_strategy(symbol):
     scout = AssetScout(symbol)
-    winner = scout.optimize() # Esto prueba las 4 estrategias y devuelve la mejor
-    return winner, scout.data # Devolvemos también los datos descargados
+    winner = scout.optimize() 
+    return winner, scout.data
 
-# Ejecutamos el análisis (Puede tardar 3-5 segundos la primera vez)
-with st.spinner(f"🤖 La IA está auditando {ticker} para encontrar su mejor estrategia..."):
+with st.spinner(f"🤖 La IA está auditando {ticker} con las 7 estrategias..."):
     winner, df = get_best_strategy(ticker)
 
 if winner and df is not None:
-    # Datos del último día
+    # Datos recientes
     today = df.iloc[-1]
     last_price = today['Close']
     prev_price = df.iloc[-2]['Close']
     
-    # Extraemos la info ganadora
     strat_name = winner['Estrategia']
     params = winner['Params']
     retorno_5y = winner['Retorno'] * 100
     sharpe = winner['Sharpe']
     
-    # --- ENCABEZADO DE INTELIGENCIA ---
+    # --- ENCABEZADO ---
     st.success(f"✅ Estrategia Óptima Detectada: **{strat_name}**")
     
-    # Métricas clave
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Precio Actual", f"${last_price:.2f}", f"{last_price - prev_price:.2f}")
     c2.metric("Retorno Histórico (5y)", f"{retorno_5y:.0f}%")
@@ -54,66 +55,63 @@ if winner and df is not None:
 
     st.markdown("---")
 
-    # --- GENERADOR DE SEÑALES EN TIEMPO REAL ---
-    # Ahora instanciamos la estrategia ganadora para ver qué dice HOY
-    from classes.strategies import GoldenCrossStrategy, MeanReversionStrategy, BollingerBreakoutStrategy, MACDStrategy
-
-    # Seleccionamos la clase correcta según el nombre
+    # --- INSTANCIAR ESTRATEGIA GANADORA ---
     strat_obj = None
-    if "Golden Cross" in strat_name:
-        strat_obj = GoldenCrossStrategy()
-    elif "Mean Reversion" in strat_name:
-        strat_obj = MeanReversionStrategy()
-    elif "Bollinger" in strat_name:
-        strat_obj = BollingerBreakoutStrategy()
-    elif "MACD" in strat_name:
-        strat_obj = MACDStrategy()
+    if "Golden Cross" in strat_name: strat_obj = GoldenCrossStrategy()
+    elif "Mean Reversion" in strat_name: strat_obj = MeanReversionStrategy()
+    elif "Bollinger" in strat_name: strat_obj = BollingerBreakoutStrategy()
+    elif "MACD" in strat_name: strat_obj = MACDStrategy()
+    elif "EMA" in strat_name: strat_obj = EMAStrategy()
+    elif "Stochastic" in strat_name: strat_obj = StochRSIStrategy()
+    elif "Awesome" in strat_name: strat_obj = AwesomeOscillatorStrategy()
 
-    # Ejecutamos la estrategia con los MEJORES PARÁMETROS encontrados
-    # Esto añade la columna 'Signal' al dataframe
-    metrics = strat_obj.backtest(df, params) 
-    # (Nota: backtest() ya genera las señales internamente en 'df' modificado, 
-    # pero necesitamos acceder al df con señales. Pequeño ajuste necesario en strategies.py si quisiéramos ser puristas, 
-    # pero para visualizar rápido, recalculamos las columnas visuales abajo).
+    # Ejecutar lógica para obtener señales visuales
+    df = strat_obj.generate_signals(df, params)
     
-    # Recalculamos indicadores visuales para el gráfico según la estrategia
+    # --- VISUALIZACIÓN DINÁMICA ---
     fig = go.Figure()
     fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Precio'))
 
-    # VISUALIZACIÓN DINÁMICA
     signal_today = "NEUTRO"
     color_signal = "gray"
     
+    # Lógica de visualización específica por estrategia
     if "Golden Cross" in strat_name:
         fast_sma = df['Close'].rolling(params['fast']).mean()
         slow_sma = df['Close'].rolling(params['slow']).mean()
         fig.add_trace(go.Scatter(x=df.index, y=fast_sma, line=dict(color='orange'), name=f"SMA {params['fast']}"))
         fig.add_trace(go.Scatter(x=df.index, y=slow_sma, line=dict(color='blue'), name=f"SMA {params['slow']}"))
         
-        # Señal
         if fast_sma.iloc[-1] > slow_sma.iloc[-1]:
-            signal_today = "MANTENER / COMPRAR (Tendencia)"
+            signal_today = "MANTENER TENDENCIA (ALCISTA)"
             color_signal = "green"
         else:
-            signal_today = "VENDER / ESPERAR"
+            signal_today = "TENDENCIA BAJISTA"
+            color_signal = "red"
+
+    elif "EMA" in strat_name:
+        ema_fast = df['Close'].ewm(span=params['fast'], adjust=False).mean()
+        ema_slow = df['Close'].ewm(span=params['slow'], adjust=False).mean()
+        fig.add_trace(go.Scatter(x=df.index, y=ema_fast, line=dict(color='cyan', width=1), name=f"EMA {params['fast']}"))
+        fig.add_trace(go.Scatter(x=df.index, y=ema_slow, line=dict(color='purple', width=1), name=f"EMA {params['slow']}"))
+        
+        if ema_fast.iloc[-1] > ema_slow.iloc[-1]:
+            signal_today = "MOMENTUM ALCISTA (EMA)"
+            color_signal = "green"
+        else:
+            signal_today = "MOMENTUM BAJISTA (EMA)"
             color_signal = "red"
 
     elif "Mean Reversion" in strat_name:
-        # RSI ya calculado en backtest, lo recalculamos para mostrar
-        delta = df['Close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        rs = gain / loss
-        rsi = 100 - (100 / (1 + rs))
-        
-        current_rsi = rsi.iloc[-1]
-        c1.metric("Nivel RSI", f"{current_rsi:.2f}")
+        # Mostramos RSI como métrica
+        current_rsi = today['RSI']
+        st.metric("Nivel RSI Actual", f"{current_rsi:.2f}")
         
         if current_rsi < params['rsi_low']:
             signal_today = "¡COMPRA POR PÁNICO! 💎"
             color_signal = "green"
         elif current_rsi > params['rsi_high']:
-            signal_today = "VENTA POR RECUPERACIÓN"
+            signal_today = "VENTA (SOBRECOMPRA)"
             color_signal = "red"
         else:
             signal_today = "ESPERAR"
@@ -124,38 +122,69 @@ if winner and df is not None:
         upper = mid + (std * params['std_dev'])
         lower = mid - (std * params['std_dev'])
         
-        fig.add_trace(go.Scatter(x=df.index, y=upper, line=dict(color='gray', dash='dot'), name="Banda Sup"))
-        fig.add_trace(go.Scatter(x=df.index, y=lower, line=dict(color='gray', dash='dot'), name="Banda Inf"))
+        fig.add_trace(go.Scatter(x=df.index, y=upper, line=dict(color='gray', dash='dot'), name="Upper Band"))
+        fig.add_trace(go.Scatter(x=df.index, y=lower, line=dict(color='gray', dash='dot'), name="Lower Band"))
         
         if last_price > upper.iloc[-1]:
-            signal_today = "RUPTURA ALCISTA (MOMENTUM) 🚀"
+            signal_today = "RUPTURA ALCISTA 🚀"
             color_signal = "green"
-        elif last_price < mid.iloc[-1]:
-            signal_today = "NEUTRO / BAJISTA"
-            color_signal = "gray"
+        elif df['Signal'].iloc[-1] == 1:
+            signal_today = "MANTENER RUPTURA"
+            color_signal = "green"
+        else:
+            signal_today = "DENTRO DE BANDAS (NEUTRO)"
             
     elif "MACD" in strat_name:
-        # MACD Chart es complejo de pintar sobre el precio, mostramos señal textual
+        # MACD es difícil de pintar sobre precio, usamos texto claro
         exp1 = df['Close'].ewm(span=params['fast'], adjust=False).mean()
         exp2 = df['Close'].ewm(span=params['slow'], adjust=False).mean()
         macd = exp1 - exp2
-        signal_line = macd.ewm(span=params['signal'], adjust=False).mean()
+        sig = macd.ewm(span=params['signal'], adjust=False).mean()
         
-        if macd.iloc[-1] > signal_line.iloc[-1]:
-            signal_today = "MOMENTUM POSITIVO (COMPRA) 🟢"
+        val_macd = macd.iloc[-1]
+        val_sig = sig.iloc[-1]
+        
+        st.metric("Valor MACD", f"{val_macd:.3f}", delta=f"{val_macd - val_sig:.3f}")
+        
+        if val_macd > val_sig:
+            signal_today = "MOMENTUM POSITIVO"
             color_signal = "green"
         else:
-            signal_today = "MOMENTUM NEGATIVO (VENTA) 🔴"
+            signal_today = "MOMENTUM NEGATIVO"
             color_signal = "red"
 
-    # --- MOSTRAR LA DECISIÓN GIGANTE ---
+    elif "Stochastic" in strat_name:
+        k = today['Stoch_K']
+        d = today['Stoch_D']
+        st.metric("Stoch K / D", f"{k:.1f} / {d:.1f}")
+        
+        if k > d and k < 80:
+            signal_today = "TENDENCIA STOCH POSITIVA"
+            color_signal = "green"
+        elif k < d:
+            signal_today = "CRUCE BAJISTA STOCH"
+            color_signal = "red"
+        else:
+            signal_today = "NEUTRO"
+
+    elif "Awesome" in strat_name:
+        ao = today['AO']
+        st.metric("Awesome Oscillator", f"{ao:.3f}", delta_color="normal")
+        
+        if ao > 0:
+            signal_today = "AO POSITIVO (ALCISTA)"
+            color_signal = "green"
+        else:
+            signal_today = "AO NEGATIVO (BAJISTA)"
+            color_signal = "red"
+
+    # --- MOSTRAR DECISIÓN ---
     st.markdown(f"""
     <div style='background-color:{color_signal}; padding: 15px; border-radius: 10px; text-align: center; color: white; margin-bottom: 20px;'>
         <h2 style='margin:0;'>SEÑAL HOY: {signal_today}</h2>
     </div>
     """, unsafe_allow_html=True)
     
-    # Gráfico
     st.subheader(f"Gráfico Técnico: {ticker}")
     fig.update_layout(height=500, xaxis_rangeslider_visible=False, template="plotly_dark")
     st.plotly_chart(fig, use_container_width=True)
