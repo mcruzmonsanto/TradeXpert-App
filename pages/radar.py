@@ -1,22 +1,24 @@
-# pages/radar.py
 import streamlit as st
 import pandas as pd
 import sys
 
 sys.path.append('.') 
 from classes.scout import AssetScout
-from classes.strategies import GoldenCrossStrategy, MeanReversionStrategy, BollingerBreakoutStrategy, MACDStrategy
+from classes.strategies import (
+    GoldenCrossStrategy, MeanReversionStrategy, BollingerBreakoutStrategy, 
+    MACDStrategy, EMAStrategy, StochRSIStrategy, AwesomeOscillatorStrategy
+)
 from classes.risk_manager import RiskManager
 import config as cfg
 
-st.set_page_config(page_title="Radar Visual Pro", layout="wide", page_icon="📡")
+st.set_page_config(page_title="Radar Completo", layout="wide", page_icon="📡")
 
 # --- ENCABEZADO ---
 c1, c2 = st.columns([3, 1])
 with c1:
     st.title("📡 Radar Visual: Plan de Trading")
     st.markdown(f"Capital: **${cfg.CAPITAL_TOTAL}** | Riesgo: **{cfg.RIESGO_POR_OPERACION*100}%**")
-    st.caption("Tarjetas de Ejecución para CFDs (Long & Short)")
+    st.caption("Escaner de 7 Estrategias (Long & Short)")
 
 with c2:
     st.markdown("### ⚙️ Filtros")
@@ -27,8 +29,6 @@ if st.button("🚀 INICIAR ESCANEO VISUAL"):
     st.markdown("---")
     progress_bar = st.progress(0)
     status_text = st.empty()
-    
-    # Contenedor principal donde irán apareciendo las tarjetas
     results_container = st.container()
 
     total_assets = len(cfg.TICKERS)
@@ -47,12 +47,15 @@ if st.button("🚀 INICIAR ESCANEO VISUAL"):
                 strat_name = winner['Estrategia']
                 params = winner['Params']
                 
-                # 2. Instanciar
+                # 2. Instanciar Estrategia Correcta
                 strat_obj = None
                 if "Golden Cross" in strat_name: strat_obj = GoldenCrossStrategy()
                 elif "Mean Reversion" in strat_name: strat_obj = MeanReversionStrategy()
                 elif "Bollinger" in strat_name: strat_obj = BollingerBreakoutStrategy()
                 elif "MACD" in strat_name: strat_obj = MACDStrategy()
+                elif "EMA" in strat_name: strat_obj = EMAStrategy()
+                elif "Stochastic" in strat_name: strat_obj = StochRSIStrategy()
+                elif "Awesome" in strat_name: strat_obj = AwesomeOscillatorStrategy()
                 
                 df = strat_obj.generate_signals(df, params)
                 if 'Signal' not in df.columns: df['Signal'] = 0
@@ -65,7 +68,7 @@ if st.button("🚀 INICIAR ESCANEO VISUAL"):
                 direction = "NONE"
                 es_oportunidad_valida = False
                 
-                # --- CLASIFICACIÓN INTELIGENTE (Lógica V7) ---
+                # --- CLASIFICACIÓN INTELIGENTE ---
                 
                 # A) CASO LONG (COMPRA)
                 if signal_val == 1:
@@ -80,20 +83,42 @@ if st.button("🚀 INICIAR ESCANEO VISUAL"):
                             
                     elif "Bollinger" in strat_name:
                         if is_new:
-                            tipo = "ENTRADA RUPTURA"
+                            tipo = "ENTRADA RUPTURA BB"
                             direction = "LONG"
                             es_oportunidad_valida = True
                         else: tipo = "MANTENER RUPTURA"
 
+                    elif "EMA" in strat_name:
+                        if is_new:
+                            tipo = "ENTRADA EMA 8/21"
+                            direction = "LONG"
+                            es_oportunidad_valida = True
+                        else: tipo = "MANTENER TENDENCIA EMA"
+
+                    elif "Stochastic" in strat_name:
+                        # Si K cruza D en zona baja (o simplemente empieza subida)
+                        if is_new and today['Stoch_K'] < 40:
+                            tipo = "ENTRADA STOCH SNIPER"
+                            direction = "LONG"
+                            es_oportunidad_valida = True
+                        else: tipo = "MANTENER STOCH"
+
+                    elif "Awesome" in strat_name:
+                        if is_new:
+                            tipo = "ENTRADA AWESOME (ZERO CROSS)"
+                            direction = "LONG"
+                            es_oportunidad_valida = True
+                        else: tipo = "MANTENER AO"
+
                     elif "Mean Reversion" in strat_name:
-                        tipo = "ENTRADA REBOTE"
+                        tipo = "ENTRADA REBOTE RSI"
                         direction = "LONG"
-                        es_oportunidad_valida = True # Siempre mostramos rebotes activos
+                        es_oportunidad_valida = True 
                         
                     elif "MACD" in strat_name:
                         tipo = "ENTRADA MOMENTUM"
                         direction = "LONG"
-                        es_oportunidad_valida = True # Siempre mostramos momentum
+                        es_oportunidad_valida = True
 
                 # B) CASO SHORT (VENTA)
                 elif signal_val == 0:
@@ -110,28 +135,32 @@ if st.button("🚀 INICIAR ESCANEO VISUAL"):
                             direction = "SHORT"
                             es_oportunidad_valida = True
 
-                    elif "MACD" in strat_name:
-                        exp1 = df['Close'].ewm(span=params['fast'], adjust=False).mean()
-                        exp2 = df['Close'].ewm(span=params['slow'], adjust=False).mean()
-                        macd = exp1 - exp2
-                        sig = macd.ewm(span=params['signal'], adjust=False).mean()
-                        if macd.iloc[-1] < sig.iloc[-1] and macd.iloc[-2] >= sig.iloc[-2]:
-                             tipo = "ENTRADA SHORT (MOMENTUM)"
+                    elif "EMA" in strat_name:
+                        ema_fast = df['Close'].ewm(span=params['fast'], adjust=False).mean()
+                        ema_slow = df['Close'].ewm(span=params['slow'], adjust=False).mean()
+                        if ema_fast.iloc[-1] < ema_slow.iloc[-1] and ema_fast.iloc[-2] >= ema_slow.iloc[-2]:
+                            tipo = "ENTRADA SHORT (EMA CROSS)"
+                            direction = "SHORT"
+                            es_oportunidad_valida = True
+                    
+                    elif "Stochastic" in strat_name:
+                         # Si K cruza D hacia abajo en zona alta
+                         if today['Stoch_K'] < today['Stoch_D'] and today['Stoch_K'] > 70:
+                             tipo = "ENTRADA SHORT (STOCH)"
                              direction = "SHORT"
                              es_oportunidad_valida = True
 
-                # --- FILTRO VISUAL ---
+                # --- RENDERIZADO ---
                 mostrar_tarjeta = False
                 if solo_accion:
                     if es_oportunidad_valida: mostrar_tarjeta = True
                 elif tipo != "NEUTRO": 
                     mostrar_tarjeta = True
 
-                # --- RENDERIZADO DE TARJETA ---
                 if mostrar_tarjeta:
                     conteo_oportunidades += 1
                     
-                    # Cálculos de Riesgo
+                    # Cálculo de Riesgo
                     risk_mgr = RiskManager(df)
                     setup = risk_mgr.get_trade_setup(
                         entry_price=today['Close'], 
@@ -154,20 +183,15 @@ if st.button("🚀 INICIAR ESCANEO VISUAL"):
                         sl_txt = f"${setup['stop_loss']:.2f}"
                         tp_txt = f"${setup['take_profit']:.2f}"
                     
-                    # DISEÑO DE LA TARJETA
                     with results_container:
-                        # Color de fondo según dirección
                         if direction == "LONG":
                             emoji = "🟢"
                             st.success(f"""
                             ### {emoji} {ticker} | {tipo}
                             **Estrategia:** {strat_name} | **Precio:** ${today['Close']:.2f}
                             
-                            📦 **ORDEN DE COMPRA:**
-                            * **Unidades:** `{units:.4f}`
-                            * **Inversión:** `${inversion:.2f}`
-                            
-                            🛡️ **Gestión:** Stop Loss: `{sl_txt}` | Take Profit: `{tp_txt}`
+                            📦 **COMPRA:** `{units:.4f}` u. (${inversion:.2f})
+                            🛡️ **Gestión:** Stop: `{sl_txt}` | Target: `{tp_txt}`
                             """)
                         elif direction == "SHORT":
                             emoji = "🔻"
@@ -175,18 +199,14 @@ if st.button("🚀 INICIAR ESCANEO VISUAL"):
                             ### {emoji} {ticker} | {tipo}
                             **Estrategia:** {strat_name} | **Precio:** ${today['Close']:.2f}
                             
-                            📦 **ORDEN DE VENTA (SHORT):**
-                            * **Unidades:** `{units:.4f}`
-                            * **Inversión:** `${inversion:.2f}`
-                            
-                            🛡️ **Gestión:** Stop Loss: `{sl_txt}` | Take Profit: `{tp_txt}`
+                            📦 **VENTA (SHORT):** `{units:.4f}` u. (${inversion:.2f})
+                            🛡️ **Gestión:** Stop: `{sl_txt}` | Target: `{tp_txt}`
                             """)
                         else:
-                            # Para "Mantener" (Azul)
-                            st.info(f"🔵 **{ticker}**: {tipo} (Estrategia: {strat_name})")
+                            st.info(f"🔵 **{ticker}**: {tipo}")
 
         except Exception as e:
-            pass # Ignorar errores puntuales para no ensuciar
+            pass
             
         progress_bar.progress((i + 1) / total_assets)
     
