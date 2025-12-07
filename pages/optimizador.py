@@ -10,41 +10,49 @@ import config as cfg
 st.set_page_config(page_title="IA Scout Pro", layout="wide", page_icon="🧠")
 st.title("🧠 IA Scout: Auditoría de Riesgo y Retorno")
 
-# Sidebar
-selected_tickers = st.sidebar.multiselect("Activos:", cfg.TICKERS, default=cfg.TICKERS[:2])
+selected_tickers = st.sidebar.multiselect("Activos a Auditar:", cfg.TICKERS, default=cfg.TICKERS[:2])
 start = st.sidebar.button("🚀 INICIAR AUDITORÍA")
 
 if start:
     st.markdown("### 📡 Resultados del Análisis (5 Años - Velas 1D)")
+    st.info("El sistema selecciona la estrategia con mayor retorno, siempre que el riesgo (Drawdown) sea aceptable.")
     
     for ticker in selected_tickers:
         scout = AssetScout(ticker)
         winner = scout.optimize()
         
         if winner:
-            # Lógica de colores según Sharpe Ratio
             sharpe = winner['Sharpe']
             if sharpe > 1.0: 
                 calidad = "EXCELENTE ⭐"
-                border_color = "green"
+                color_sharpe = "green"
             elif sharpe > 0.5: 
                 calidad = "BUENO ✅"
-                border_color = "blue"
+                color_sharpe = "blue"
             else: 
                 calidad = "RIESGOSO ⚠️"
-                border_color = "orange"
+                color_sharpe = "orange"
 
             with st.container():
-                st.markdown(f"#### 📊 {ticker} -> {winner['Estrategia']}")
+                # Icono según estrategia
+                strat = winner['Estrategia']
+                icon = "📈"
+                if "Mean" in strat: icon = "💎"
+                elif "EMA" in strat: icon = "🚀"
+                elif "Stoch" in strat: icon = "🎯"
+                elif "Awesome" in strat: icon = "🌊"
+
+                st.markdown(f"#### {icon} {ticker} -> **{strat}**")
                 
-                # Columnas de Métricas
                 c1, c2, c3, c4 = st.columns(4)
                 c1.metric("Retorno Total", f"{winner['Retorno']*100:.2f}%")
-                c2.metric("Max Drawdown", f"{winner['Drawdown']*100:.2f}%", help="La caída máxima desde el pico más alto.")
-                c3.metric("Sharpe Ratio", f"{sharpe:.2f}", help=">1 es excelente. Mide retorno vs riesgo.")
-                c4.metric("Calidad", calidad)
                 
-                st.caption(f"⚙️ Configuración Óptima: `{winner['Params']}`")
+                dd_val = winner['Drawdown']*100
+                c2.metric("Max Drawdown", f"{dd_val:.2f}%", help="Riesgo máximo histórico")
+                
+                c3.metric("Sharpe Ratio", f"{sharpe:.2f}", delta=calidad)
+                
+                c4.code(f"{winner['Params']}")
                 st.markdown("---")
             
             time.sleep(0.1)
