@@ -16,31 +16,59 @@ import config as cfg
 
 st.set_page_config(page_title="Radar & Ejecución", layout="wide", page_icon="📡")
 
+# --- BARRA LATERAL (CONTROLES DE DINERO) ---
+st.sidebar.header("💰 Gestión de Capital")
+
+# 1. Input para modificar Capital (Por defecto carga el de config.py)
+capital_dinamico = st.sidebar.number_input(
+    "Capital Disponible ($)", 
+    min_value=100.0, 
+    max_value=1000000.0, 
+    value=float(cfg.CAPITAL_TOTAL), 
+    step=500.0,
+    help="Dinero total en tu cuenta de broker para calcular el tamaño de posición."
+)
+
+# 2. Input para modificar Riesgo (Slider de 0.5% a 10%)
+riesgo_pct = st.sidebar.slider(
+    "Riesgo por Operación (%)", 
+    min_value=0.5, 
+    max_value=10.0, 
+    value=float(cfg.RIESGO_POR_OPERACION * 100), 
+    step=0.5,
+    help="Porcentaje de tu capital que estás dispuesto a perder si toca el Stop Loss."
+)
+# Convertimos el porcentaje visual (ej: 2.0) a decimal matemático (0.02)
+riesgo_decimal = riesgo_pct / 100.0
+
+
 # --- FUNCIÓN DE GUARDADO (DATABASE) ---
 LOG_FILE = "data/bitacora_trades.csv"
 
 def guardar_trade(trade_dict):
-    # Verificar si existe la carpeta data
     if not os.path.exists("data"):
         os.makedirs("data")
         
-    # Verificar si existe el archivo para cargar o crear cabeceras
     if os.path.exists(LOG_FILE):
         df_log = pd.read_csv(LOG_FILE)
     else:
         df_log = pd.DataFrame(columns=["Fecha", "Ticker", "Accion", "Estrategia", "Precio_Entrada", "Unidades", "Inversion", "Stop_Loss", "Take_Profit", "Status", "Precio_Salida", "Resultado"])
     
-    # Agregar nueva fila
     new_row = pd.DataFrame([trade_dict])
     df_log = pd.concat([df_log, new_row], ignore_index=True)
     df_log.to_csv(LOG_FILE, index=False)
     return True
 
-# --- INTERFAZ ---
+# --- INTERFAZ PRINCIPAL ---
 c1, c2 = st.columns([3, 1])
 with c1:
     st.title("📡 Radar: Ejecución y Registro")
-    st.markdown(f"Capital: **${cfg.CAPITAL_TOTAL}** | Riesgo: **{cfg.RIESGO_POR_OPERACION*100}%**")
+    # Mostramos los valores dinámicos que seleccionó el usuario
+    st.markdown(f"Capital: **${capital_dinamico:,.2f}** | Riesgo: **{riesgo_pct}%**")
+    
+    # Cálculo rápido de cuánto es el dinero en riesgo
+    dinero_en_riesgo = capital_dinamico * riesgo_decimal
+    st.caption(f"🔥 Estás arriesgando máximo **${dinero_en_riesgo:.2f}** por operación.")
 
 with c2:
     st.markdown("### ⚙️ Filtros")
@@ -90,7 +118,7 @@ if st.button("🚀 INICIAR ESCANEO Y EJECUCIÓN"):
                 direction = "NONE"
                 es_oportunidad_valida = False
                 
-                # --- CLASIFICACIÓN (Simplificada para brevedad) ---
+                # --- CLASIFICACIÓN ---
                 if signal_val == 1:
                     is_new = (prev['Signal'] == 0)
                     if "Golden Cross" in strat_name:
@@ -118,7 +146,6 @@ if st.button("🚀 INICIAR ESCANEO Y EJECUCIÓN"):
                         tipo, direction, es_oportunidad_valida = "ENTRADA SHORT", "SHORT", True
                     elif "Stochastic" in strat_name and today['Stoch_K'] > 80 and today['Stoch_K'] < today['Stoch_D']:
                         tipo, direction, es_oportunidad_valida = "ENTRADA SHORT", "SHORT", True
-                    # (Puedes agregar más lógicas de short aquí)
 
                 # --- RENDERIZADO ---
                 mostrar = False
@@ -143,13 +170,13 @@ if st.button("🚀 INICIAR ESCANEO Y EJECUCIÓN"):
                     sl, tp = 0.0, 0.0
                     
                     if setup and es_oportunidad_valida:
-                        units = risk_mgr.calculate_position_size(cfg.CAPITAL_TOTAL, cfg.RIESGO_POR_OPERACION, setup)
+                        # USAMOS LOS VALORES DINÁMICOS DE LA BARRA LATERAL
+                        units = risk_mgr.calculate_position_size(capital_dinamico, riesgo_decimal, setup)
                         inv = units * today['Close']
                         sl = setup['stop_loss']
                         tp = setup['take_profit']
                     
                     with results_container:
-                        # Marco visual
                         color_border = "green" if direction == "LONG" else "red" if direction == "SHORT" else "blue"
                         with st.container(border=True):
                             c_info, c_action = st.columns([3, 1])
@@ -168,11 +195,10 @@ if st.button("🚀 INICIAR ESCANEO Y EJECUCIÓN"):
                                     """)
                             
                             with c_action:
-                                st.write("") # Espacio
+                                st.write("") 
                                 st.write("")
                                 if es_oportunidad_valida:
                                     # BOTÓN DE REGISTRO
-                                    # Usamos un key único para que no se confundan los botones
                                     btn_key = f"save_{ticker}_{datetime.now().strftime('%H%M')}"
                                     if st.button(f"💾 Registrar", key=btn_key, type="primary"):
                                         trade_data = {
@@ -193,7 +219,7 @@ if st.button("🚀 INICIAR ESCANEO Y EJECUCIÓN"):
                                         st.toast(f"✅ Orden de {ticker} guardada en Bitácora!")
 
         except Exception as e:
-            pass # st.error(e)
+            pass 
             
         progress_bar.progress((i + 1) / total_assets)
     
