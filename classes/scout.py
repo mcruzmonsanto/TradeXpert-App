@@ -6,20 +6,16 @@ from classes.strategies import (
     GoldenCrossStrategy, MeanReversionStrategy, BollingerBreakoutStrategy, 
     MACDStrategy, EMAStrategy, StochRSIStrategy, AwesomeOscillatorStrategy
 )
-# Importamos las PRO (NUEVO)
+# Importamos las PRO (CRUCIAL PARA QUE FUNCIONE)
 from classes.strategies_pro import SuperTrendStrategy, SqueezeMomentumStrategy, ADXStrategy
 
 class AssetScout:
     def __init__(self, ticker):
         self.ticker = ticker
         self.data = self._download_data()
-        # ARSENAL EXPANDIDO (10 ESTRATEGIAS AHORA)
+        # ARSENAL DE 10 ESTRATEGIAS
         self.strategies = [
-            # Las Pro primero (Suelen ser mejores)
-            SuperTrendStrategy(),
-            SqueezeMomentumStrategy(),
-            ADXStrategy(),
-            # Las Clásicas
+            SuperTrendStrategy(), SqueezeMomentumStrategy(), ADXStrategy(),
             GoldenCrossStrategy(), MeanReversionStrategy(), BollingerBreakoutStrategy(),
             MACDStrategy(), EMAStrategy(), StochRSIStrategy(), AwesomeOscillatorStrategy()
         ]
@@ -34,11 +30,27 @@ class AssetScout:
     def optimize(self, force_recalc=False):
         if self.data.empty: return None
         
-        # (Aquí va la lógica del mapa... mantén el if de config.py igual que antes)
-        if not force_recalc and self.ticker in cfg.STRATEGY_MAP:
-            # ... (código existente de atajo) ...
-            pass # (Resumido para brevedad, no borres tu código real)
+        # ATAJO MAESTRO (Memoria)
+        if not force_recalc and hasattr(cfg, 'STRATEGY_MAP') and self.ticker in cfg.STRATEGY_MAP:
+            saved_config = cfg.STRATEGY_MAP[self.ticker]
+            strat_name = saved_config['strategy']
+            params = saved_config['params']
+            
+            # Buscar la estrategia en la lista por nombre
+            strat_obj = next((s for s in self.strategies if s.name == strat_name), None)
+            
+            if strat_obj:
+                metrics = strat_obj.backtest(self.data, params)
+                return {
+                    "Ticker": self.ticker,
+                    "Estrategia": strat_name,
+                    "Retorno": metrics["return"],
+                    "Sharpe": metrics["sharpe"],
+                    "Drawdown": metrics["drawdown"],
+                    "Params": params
+                }
 
+        # MODO LENTO (Optimización)
         global_best_score = -999
         global_best_result = None
 
@@ -62,43 +74,30 @@ class AssetScout:
                 }
 
         for strat in self.strategies:
-            
-            # --- NUEVAS ESTRATEGIAS PRO ---
-            
+            # ESTRATEGIAS PRO
             if isinstance(strat, SuperTrendStrategy):
-                # Probamos configuraciones clásicas de TradingView
-                configs = [
-                    {'period': 10, 'multiplier': 3.0}, # Estándar
-                    {'period': 12, 'multiplier': 3.0}, # Más suave
-                    {'period': 10, 'multiplier': 4.0}  # Stop más amplio (Crypto)
-                ]
-                for p in configs: evaluate_iteration(strat, p)
-
+                for p in [{'period': 10, 'multiplier': 3.0}, {'period': 12, 'multiplier': 3.0}]: evaluate_iteration(strat, p)
             elif isinstance(strat, SqueezeMomentumStrategy):
-                # Config LazyBear estándar y una rápida
-                configs = [
-                    {'bb_len': 20, 'bb_mult': 2.0, 'kc_len': 20, 'kc_mult': 1.5},
-                    {'bb_len': 20, 'bb_mult': 2.0, 'kc_len': 20, 'kc_mult': 1.3} # Squeeze más estricto
-                ]
-                for p in configs: evaluate_iteration(strat, p)
-
+                for p in [{'bb_len': 20, 'bb_mult': 2.0, 'kc_len': 20, 'kc_mult': 1.5}]: evaluate_iteration(strat, p)
             elif isinstance(strat, ADXStrategy):
-                # Solo operamos tendencias fuertes (>20 o >25)
-                configs = [
-                    {'period': 14, 'adx_threshold': 20},
-                    {'period': 14, 'adx_threshold': 25}
-                ]
-                for p in configs: evaluate_iteration(strat, p)
-
-            # --- ESTRATEGIAS CLÁSICAS (Copia los mismos ifs de antes) ---
+                for p in [{'period': 14, 'adx_threshold': 20}]: evaluate_iteration(strat, p)
+            
+            # ESTRATEGIAS CLÁSICAS
             elif isinstance(strat, GoldenCrossStrategy):
                  for fast in [20, 50]:
                     for slow in [100, 200]:
-                        if fast >= slow: continue
-                        evaluate_iteration(strat, {'fast': fast, 'slow': slow})
-            # ... (Agrega el resto de los ifs de tu archivo anterior aquí: Mean, Bollinger, MACD, etc.) ...
-            
-            # Nota: Asegúrate de incluir todos los ifs de las estrategias viejas aquí abajo
-            # para que sigan compitiendo.
+                        if fast < slow: evaluate_iteration(strat, {'fast': fast, 'slow': slow})
+            elif isinstance(strat, MeanReversionStrategy):
+                for low in [25, 30]: evaluate_iteration(strat, {'rsi_low': low, 'rsi_high': 70})
+            elif isinstance(strat, BollingerBreakoutStrategy):
+                evaluate_iteration(strat, {'window': 20, 'std_dev': 2})
+            elif isinstance(strat, MACDStrategy):
+                evaluate_iteration(strat, {'fast': 12, 'slow': 26, 'signal': 9})
+            elif isinstance(strat, EMAStrategy):
+                for p in [{'fast': 8, 'slow': 21}, {'fast': 5, 'slow': 13}]: evaluate_iteration(strat, p)
+            elif isinstance(strat, StochRSIStrategy):
+                evaluate_iteration(strat, {'rsi_period': 14, 'stoch_period': 14, 'k_period': 3, 'd_period': 3})
+            elif isinstance(strat, AwesomeOscillatorStrategy):
+                evaluate_iteration(strat, {'fast': 5, 'slow': 34})
 
         return global_best_result
