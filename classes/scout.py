@@ -1,28 +1,32 @@
-# classes/scout.py
 import yfinance as yf
 import pandas as pd
-# IMPORTAMOS LAS 4 ESTRATEGIAS
+# IMPORTAMOS TODAS LAS ESTRATEGIAS
 from classes.strategies import (
     GoldenCrossStrategy, 
     MeanReversionStrategy, 
     BollingerBreakoutStrategy, 
-    MACDStrategy
+    MACDStrategy,
+    EMAStrategy,
+    StochRSIStrategy,
+    AwesomeOscillatorStrategy
 )
 
 class AssetScout:
     def __init__(self, ticker):
         self.ticker = ticker
         self.data = self._download_data()
-        # Cargamos el arsenal completo
+        # Cargamos el arsenal completo (7 estrategias)
         self.strategies = [
             GoldenCrossStrategy(), 
             MeanReversionStrategy(),
             BollingerBreakoutStrategy(),
-            MACDStrategy()
+            MACDStrategy(),
+            EMAStrategy(),
+            StochRSIStrategy(),
+            AwesomeOscillatorStrategy()
         ]
 
     def _download_data(self):
-        # Usamos try/except para evitar errores si un ticker falla
         try:
             df = yf.Ticker(self.ticker).history(period="5y")
             return df
@@ -32,29 +36,21 @@ class AssetScout:
     def optimize(self):
         if self.data.empty: return None
         
-        global_best_score = -999 # Usaremos un score combinado
+        global_best_score = -999
         global_best_result = None
 
-        # Función auxiliar para evaluar una iteración
         def evaluate_iteration(strat_obj, params):
             nonlocal global_best_score, global_best_result
-            
-            # Ejecutamos backtest (ahora devuelve diccionario)
             metrics = strat_obj.backtest(self.data, params)
             
             ret = metrics["return"]
             sharpe = metrics["sharpe"]
             dd = metrics["drawdown"]
             
-            # --- CRITERIO DE SELECCIÓN ---
-            # Aquí defines qué te importa más. 
-            # Filtro: Si el Drawdown es peor que -50%, descartamos la estrategia (muy arriesgada)
-            if dd < -0.50: 
-                return
+            # Filtro de Seguridad: Si pierde más del 60%, descartado
+            if dd < -0.60: return
 
-            # Score: Priorizamos Retorno, pero el Sharpe ayuda a desempatar calidad
             score = ret 
-            
             if score > global_best_score:
                 global_best_score = score
                 global_best_result = {
@@ -66,7 +62,7 @@ class AssetScout:
                     "Params": params
                 }
 
-        # --- BUCLES DE OPTIMIZACIÓN (Igual que antes pero llamando a evaluate) ---
+        # --- BUCLES DE OPTIMIZACIÓN ---
         
         # 1. GOLDEN CROSS
         strat = self.strategies[0]
@@ -81,7 +77,7 @@ class AssetScout:
             for high in [60, 70]:
                 evaluate_iteration(strat, {'rsi_low': low, 'rsi_high': high})
 
-        # 3. BOLLINGER BREAKOUT
+        # 3. BOLLINGER
         strat = self.strategies[2]
         for win in [20, 30]:
             evaluate_iteration(strat, {'window': win, 'std_dev': 2})
@@ -89,5 +85,26 @@ class AssetScout:
         # 4. MACD
         strat = self.strategies[3]
         evaluate_iteration(strat, {'fast': 12, 'slow': 26, 'signal': 9})
+
+        # 5. EMA CROSSOVER
+        strat = self.strategies[4]
+        configs = [{'fast': 8, 'slow': 21}, {'fast': 9, 'slow': 21}, {'fast': 5, 'slow': 13}]
+        for params in configs:
+            evaluate_iteration(strat, params)
+
+        # 6. STOCHASTIC RSI
+        strat = self.strategies[5]
+        configs = [
+            {'rsi_period': 14, 'stoch_period': 14, 'k_period': 3, 'd_period': 3},
+            {'rsi_period': 9, 'stoch_period': 9, 'k_period': 3, 'd_period': 3}
+        ]
+        for params in configs:
+            evaluate_iteration(strat, params)
+
+        # 7. AWESOME OSCILLATOR
+        strat = self.strategies[6]
+        configs = [{'fast': 5, 'slow': 34}, {'fast': 3, 'slow': 10}]
+        for params in configs:
+            evaluate_iteration(strat, params)
 
         return global_best_result
