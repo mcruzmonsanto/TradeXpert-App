@@ -1,18 +1,10 @@
-# Core
-streamlit==1.29.0
-pandas==2.1.4
-numpy==1.26.2
-
-# Trading & Data
-yfinance==0.2.33
-ta==0.11.0
-pandas-ta==0.3.14b
-
-# Visualización
-plotly==5.18.0
-
-# Performance
-numba==0.58.1
-
-# Utilidades
-python-dotenv==1.0.0
+streamlit
+yfinance>=0.2.40
+pandas
+plotly
+requests
+curl_cffi
+textblob
+numpy
+numba
+python-dotenv
