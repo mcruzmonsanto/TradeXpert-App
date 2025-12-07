@@ -647,7 +647,7 @@ if winner and df is not None and not df.empty:
         
         st.plotly_chart(fig_equity, use_container_width=True)
     
-    # ========================================
+# ========================================
     # TAB 3: TRADING SETUP
     # ========================================
     with tab3:
@@ -704,99 +704,108 @@ if winner and df is not None and not df.empty:
             # Visualización del setup
             st.markdown("### 📊 Visualización del Setup")
             
-            # Últimos 50 días para contexto
+            # Últimos 50 días para contexto visual
             df_reciente = df.tail(50)
             
             fig_setup = go.Figure()
             
-            # Precio
+            # Precio (Candlestick) - AQUÍ SE HABÍA CORTADO EL CÓDIGO ANTERIOR
             fig_setup.add_trace(go.Candlestick(
                 x=df_reciente.index,
-                open=df_
-# Niveles del setup
-        fig_setup.add_hline(y=setup['entry'], line_dash="solid", line_color="blue", 
-                           annotation_text="ENTRADA", annotation_position="right")
-        fig_setup.add_hline(y=setup['stop_loss'], line_dash="dash", line_color="red",
-                           annotation_text="STOP LOSS", annotation_position="right")
-        fig_setup.add_hline(y=setup['take_profit'], line_dash="dash", line_color="green",
-                           annotation_text="TAKE PROFIT", annotation_position="right")
-        
-        fig_setup.update_layout(
-            title=f"Setup de Trading - {ticker} ({direction})",
-            xaxis_title="Fecha",
-            yaxis_title="Precio ($)",
-            template='plotly_white',
-            height=500,
-            showlegend=True
-        )
-        
-        st.plotly_chart(fig_setup, use_container_width=True)
-        
-    else:
-        st.warning("⚠️ No se pudo calcular el setup de trading (ATR insuficiente)")
+                open=df_reciente['Open'],
+                high=df_reciente['High'],
+                low=df_reciente['Low'],
+                close=df_reciente['Close'],
+                name='Precio'
+            ))
 
-# ========================================
-# TAB 4: INFORMACIÓN
-# ========================================
-with tab4:
-    st.subheader("ℹ️ Información Detallada del Activo")
-    
-    col_i1, col_i2 = st.columns(2)
-    
-    with col_i1:
-        st.markdown("### 📊 Datos del Activo")
-        st.info(f"""
-        **Ticker:** {ticker}
+            # Niveles del setup
+            fig_setup.add_hline(y=setup['entry'], line_dash="solid", line_color="blue", 
+                               annotation_text="ENTRADA", annotation_position="right")
+            fig_setup.add_hline(y=setup['stop_loss'], line_dash="dash", line_color="red",
+                               annotation_text="STOP LOSS", annotation_position="right")
+            fig_setup.add_hline(y=setup['take_profit'], line_dash="dash", line_color="green",
+                               annotation_text="TAKE PROFIT", annotation_position="right")
+            
+            fig_setup.update_layout(
+                title=f"Setup de Trading - {ticker} ({direction})",
+                xaxis_title="Fecha",
+                yaxis_title="Precio ($)",
+                template='plotly_white',
+                height=500,
+                showlegend=True,
+                xaxis_rangeslider_visible=False
+            )
+            
+            st.plotly_chart(fig_setup, use_container_width=True)
+            
+        else:
+            st.warning("⚠️ No se pudo calcular el setup de trading (ATR insuficiente o datos faltantes)")
+
+    # ========================================
+    # TAB 4: INFORMACIÓN
+    # ========================================
+    with tab4:
+        st.subheader("ℹ️ Información Detallada del Activo")
         
-        **Sector:** {sector}
+        col_i1, col_i2 = st.columns(2)
         
-        **Estrategia Óptima:** {strat_name}
+        with col_i1:
+            st.markdown("### 📊 Datos del Activo")
+            st.info(f"""
+            **Ticker:** {ticker}
+            
+            **Sector:** {sector}
+            
+            **Estrategia Óptima:** {strat_name}
+            
+            **Período Analizado:** {df.index[0].strftime('%Y-%m-%d')} a {df.index[-1].strftime('%Y-%m-%d')}
+            
+            **Días de Datos:** {len(df)}
+            """)
         
-        **Período Analizado:** {df.index[0].strftime('%Y-%m-%d')} a {df.index[-1].strftime('%Y-%m-%d')}
+        with col_i2:
+            st.markdown("### ⚙️ Parámetros de la Estrategia")
+            st.code(str(params), language="python")
         
-        **Días de Datos:** {len(df)}
-        """)
-    
-    with col_i2:
-        st.markdown("### ⚙️ Parámetros de la Estrategia")
-        st.code(str(params), language="python")
-    
-    st.markdown("---")
-    
-    st.markdown("### 📈 Estadísticas del Precio")
-    
-    price_stats = {
-        "Métrica": [
-            "Precio Actual",
-            "Máximo 52 Semanas",
-            "Mínimo 52 Semanas",
-            "Promedio Móvil 50d",
-            "Promedio Móvil 200d",
-            "Volatilidad (30d)"
-        ],
-        "Valor": [
-            f"${today['Close']:.2f}",
-            f"${df['High'].tail(252).max():.2f}",
-            f"${df['Low'].tail(252).min():.2f}",
-            f"${df['Close'].rolling(50).mean().iloc[-1]:.2f}",
-            f"${df['Close'].rolling(200).mean().iloc[-1]:.2f}",
-            f"{df['Close'].pct_change().tail(30).std() * 100:.2f}%"
-        ]
-    }
-    
-    st.dataframe(pd.DataFrame(price_stats), use_container_width=True, hide_index=True)
+        st.markdown("---")
+        
+        st.markdown("### 📈 Estadísticas del Precio")
+        
+        price_stats = {
+            "Métrica": [
+                "Precio Actual",
+                "Máximo 52 Semanas",
+                "Mínimo 52 Semanas",
+                "Promedio Móvil 50d",
+                "Promedio Móvil 200d",
+                "Volatilidad (30d)"
+            ],
+            "Valor": [
+                f"${today['Close']:.2f}",
+                f"${df['High'].tail(252).max():.2f}",
+                f"${df['Low'].tail(252).min():.2f}",
+                f"${df['Close'].rolling(50).mean().iloc[-1]:.2f}",
+                f"${df['Close'].rolling(200).mean().iloc[-1]:.2f}",
+                f"{df['Close'].pct_change().tail(30).std() * 100:.2f}%"
+            ]
+        }
+        
+        st.dataframe(pd.DataFrame(price_stats), use_container_width=True, hide_index=True)
+
 else:
-st.error("❌ Error cargando datos del activo. Por favor intenta con otro ticker.")
-if winner is None:
-    st.info("💡 Posibles causas: ticker inválido, sin datos históricos suficientes, o error de conexión.")
+    # Manejo de errores si no hay 'winner' o 'df'
+    st.error("❌ Error cargando datos del activo. Por favor intenta con otro ticker.")
+    if winner is None:
+        st.info("💡 Posibles causas: ticker inválido, sin datos históricos suficientes, o error de conexión con Yahoo Finance.")
 
-============================================
-FOOTER
-============================================
+# ============================================
+# FOOTER
+# ============================================
 st.markdown("---")
 st.caption(f"""
-{cfg.APP.app_name} v{cfg.APP.app_version} |
-Desarrollado con ❤️ y ☕ |
-© 2024 |
+{cfg.APP.app_name} v{cfg.APP.app_version} | 
+Desarrollado con ❤️ y ☕ | 
+© {datetime.now().year} | 
 📧 Soporte: support@tradexpert.com
 """)
