@@ -86,8 +86,8 @@ class AssetUniverse:
 class RiskConfig:
     """Configuración de gestión de riesgo"""
     
-    capital_total: float = field(default_factory=lambda: float(os.getenv('CAPITAL_TOTAL', '10000')))
-    riesgo_por_operacion: float = 0.02
+    capital_total: float = field(default_factory=lambda: float(os.getenv('CAPITAL_TOTAL', '1000')))
+    riesgo_por_operacion: float = 0.015
     atr_multiplier: float = 1.5
     rr_ratio: float = 2.0
     max_posiciones_simultaneas: int = 5
@@ -190,3 +190,4 @@ RIESGO_POR_OPERACION = RISK.riesgo_por_operacion
 ATR_MULTIPLIER = RISK.atr_multiplier
 RR_RATIO = RISK.rr_ratio
 STRATEGY_MAP = STRATEGY_MAP_OBJ.strategies
+
