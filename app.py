@@ -1,10 +1,10 @@
-# app.py - DASHBOARD PRINCIPAL OPTIMIZADO
+# app.py - DASHBOARD PRINCIPAL OPTIMIZADO COMPLETO
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, Optional
 
 sys.path.append('.') 
@@ -12,23 +12,11 @@ sys.path.append('.')
 from classes.scout import AssetScout
 from classes.strategies import (
     GoldenCrossStrategy, MeanReversionStrategy, BollingerBreakoutStrategy, 
-    MACDStrategy, EMAStrategy, StochRSIStrategy, AwesomeOscillatorStrategy
+    MACDStrategy, EMAStrategy, StochRSIStrategy, AwesomeOscillatorStrategy,
+    SuperTrendStrategy, SqueezeMomentumStrategy, ADXStrategy
 )
-from classes.strategies_pro import SuperTrendStrategy, SqueezeMomentumStrategy, ADXStrategy
 from classes.risk_manager import RiskManager
 import config as cfg
-
-"""
-OPTIMIZACIONES IMPLEMENTADAS:
-1. Sistema de navegación multi-página mejorado
-2. Cache inteligente con TTL configurable
-3. Visualizaciones Plotly avanzadas (subplots, indicadores técnicos)
-4. Sistema de alertas y notificaciones
-5. Métricas de performance en tiempo real
-6. Factory pattern para instanciar estrategias
-7. Error handling robusto
-8. UI moderna con tabs y containers
-"""
 
 # ============================================
 # CONFIGURACIÓN GLOBAL
@@ -52,13 +40,6 @@ st.markdown("""
         -webkit-text-fill-color: transparent;
         text-align: center;
         padding: 1rem 0;
-    }
-    
-    .metric-card {
-        background-color: #f0f2f6;
-        padding: 1.5rem;
-        border-radius: 10px;
-        border-left: 5px solid #667eea;
     }
     
     .signal-bullish {
@@ -124,15 +105,7 @@ def instanciar_estrategia(strat_name: str):
 
 @st.cache_data(ttl=cfg.APP.cache_ttl_seconds)
 def get_best_strategy(symbol: str) -> tuple:
-    """
-    Obtiene la mejor estrategia para un activo con cache.
-    
-    Args:
-        symbol: Ticker del activo
-        
-    Returns:
-        (winner_dict, dataframe)
-    """
+    """Obtiene la mejor estrategia para un activo con cache"""
     try:
         scout = AssetScout(symbol)
         winner = scout.optimize()
@@ -142,22 +115,9 @@ def get_best_strategy(symbol: str) -> tuple:
         return None, None
 
 
-def crear_grafico_avanzado(
-    df: pd.DataFrame, 
-    strat_name: str, 
-    params: Dict
-) -> go.Figure:
-    """
-    Crea gráfico Plotly avanzado con subplots e indicadores.
+def crear_grafico_avanzado(df: pd.DataFrame, strat_name: str, params: Dict) -> go.Figure:
+    """Crea gráfico Plotly avanzado con subplots e indicadores"""
     
-    Args:
-        df: DataFrame con datos OHLCV y señales
-        strat_name: Nombre de la estrategia
-        params: Parámetros de la estrategia
-        
-    Returns:
-        Figura de Plotly
-    """
     # Crear subplots (precio + volumen + indicador)
     fig = make_subplots(
         rows=3, cols=1,
@@ -167,7 +127,7 @@ def crear_grafico_avanzado(
         subplot_titles=('Precio y Señales', 'Volumen', 'Indicador Técnico')
     )
     
-    # 1. CANDLESTICK (precio)
+    # 1. CANDLESTICK
     fig.add_trace(
         go.Candlestick(
             x=df.index,
@@ -193,12 +153,8 @@ def crear_grafico_avanzado(
                 y=buy_signals['Low'] * 0.98,
                 mode='markers',
                 name='Señal Compra',
-                marker=dict(
-                    symbol='triangle-up',
-                    size=15,
-                    color='#10b981',
-                    line=dict(width=2, color='white')
-                )
+                marker=dict(symbol='triangle-up', size=15, color='#10b981', 
+                           line=dict(width=2, color='white'))
             ),
             row=1, col=1
         )
@@ -210,62 +166,60 @@ def crear_grafico_avanzado(
                 y=sell_signals['High'] * 1.02,
                 mode='markers',
                 name='Señal Venta',
-                marker=dict(
-                    symbol='triangle-down',
-                    size=15,
-                    color='#ef4444',
-                    line=dict(width=2, color='white')
-                )
+                marker=dict(symbol='triangle-down', size=15, color='#ef4444',
+                           line=dict(width=2, color='white'))
             ),
             row=1, col=1
         )
     
-    # 3. INDICADORES ESPECÍFICOS POR ESTRATEGIA
+    # 3. INDICADORES ESPECÍFICOS
     if "SuperTrend" in strat_name and 'SuperTrend' in df.columns:
         fig.add_trace(
-            go.Scatter(
-                x=df.index,
-                y=df['SuperTrend'],
-                line=dict(color='#8b5cf6', width=2),
-                name='SuperTrend'
-            ),
+            go.Scatter(x=df.index, y=df['SuperTrend'], 
+                      line=dict(color='#8b5cf6', width=2), name='SuperTrend'),
             row=1, col=1
         )
     
     elif "EMA" in strat_name:
         ema_fast = df['Close'].ewm(span=params['fast'], adjust=False).mean()
         ema_slow = df['Close'].ewm(span=params['slow'], adjust=False).mean()
-        
         fig.add_trace(
-            go.Scatter(x=df.index, y=ema_fast, line=dict(color='#06b6d4', width=2), name=f"EMA {params['fast']}"),
+            go.Scatter(x=df.index, y=ema_fast, line=dict(color='#06b6d4', width=2), 
+                      name=f"EMA {params['fast']}"),
             row=1, col=1
         )
         fig.add_trace(
-            go.Scatter(x=df.index, y=ema_slow, line=dict(color='#8b5cf6', width=2), name=f"EMA {params['slow']}"),
+            go.Scatter(x=df.index, y=ema_slow, line=dict(color='#8b5cf6', width=2),
+                      name=f"EMA {params['slow']}"),
             row=1, col=1
         )
     
-    elif "Golden" in strat_name and 'SMA_Fast' in df.columns and 'SMA_Slow' in df.columns:
+    elif "Golden" in strat_name and 'SMA_Fast' in df.columns:
         fig.add_trace(
-            go.Scatter(x=df.index, y=df['SMA_Fast'], line=dict(color='#06b6d4', width=2), name=f"SMA {params['fast']}"),
+            go.Scatter(x=df.index, y=df['SMA_Fast'], line=dict(color='#06b6d4', width=2),
+                      name=f"SMA {params['fast']}"),
             row=1, col=1
         )
         fig.add_trace(
-            go.Scatter(x=df.index, y=df['SMA_Slow'], line=dict(color='#8b5cf6', width=2), name=f"SMA {params['slow']}"),
+            go.Scatter(x=df.index, y=df['SMA_Slow'], line=dict(color='#8b5cf6', width=2),
+                      name=f"SMA {params['slow']}"),
             row=1, col=1
         )
     
     elif "Bollinger" in strat_name and 'BB_Upper' in df.columns:
         fig.add_trace(
-            go.Scatter(x=df.index, y=df['BB_Upper'], line=dict(color='#ef4444', width=1, dash='dash'), name='BB Superior'),
+            go.Scatter(x=df.index, y=df['BB_Upper'], 
+                      line=dict(color='#ef4444', width=1, dash='dash'), name='BB Superior'),
             row=1, col=1
         )
         fig.add_trace(
-            go.Scatter(x=df.index, y=df['BB_Mid'], line=dict(color='#6b7280', width=1), name='BB Media'),
+            go.Scatter(x=df.index, y=df['BB_Mid'], 
+                      line=dict(color='#6b7280', width=1), name='BB Media'),
             row=1, col=1
         )
         fig.add_trace(
-            go.Scatter(x=df.index, y=df['BB_Lower'], line=dict(color='#10b981', width=1, dash='dash'), name='BB Inferior'),
+            go.Scatter(x=df.index, y=df['BB_Lower'],
+                      line=dict(color='#10b981', width=1, dash='dash'), name='BB Inferior'),
             row=1, col=1
         )
     
@@ -274,34 +228,31 @@ def crear_grafico_avanzado(
               for close, open_ in zip(df['Close'], df['Open'])]
     
     fig.add_trace(
-        go.Bar(
-            x=df.index,
-            y=df['Volume'],
-            name='Volumen',
-            marker_color=colors,
-            opacity=0.5
-        ),
+        go.Bar(x=df.index, y=df['Volume'], name='Volumen', 
+               marker_color=colors, opacity=0.5),
         row=2, col=1
     )
     
-    # 5. INDICADOR TÉCNICO (RSI, MACD, Momentum, etc.)
+    # 5. INDICADOR TÉCNICO
     if "Mean Reversion" in strat_name and 'RSI' in df.columns:
         fig.add_trace(
-            go.Scatter(x=df.index, y=df['RSI'], line=dict(color='#8b5cf6', width=2), name='RSI'),
+            go.Scatter(x=df.index, y=df['RSI'], line=dict(color='#8b5cf6', width=2), 
+                      name='RSI'),
             row=3, col=1
         )
-        # Líneas de referencia RSI
         fig.add_hline(y=70, line_dash="dash", line_color="red", row=3, col=1)
         fig.add_hline(y=30, line_dash="dash", line_color="green", row=3, col=1)
         fig.update_yaxes(title_text="RSI", row=3, col=1, range=[0, 100])
     
     elif "MACD" in strat_name and 'MACD' in df.columns:
         fig.add_trace(
-            go.Scatter(x=df.index, y=df['MACD'], line=dict(color='#06b6d4', width=2), name='MACD'),
+            go.Scatter(x=df.index, y=df['MACD'], line=dict(color='#06b6d4', width=2),
+                      name='MACD'),
             row=3, col=1
         )
         fig.add_trace(
-            go.Scatter(x=df.index, y=df['Signal_Line'], line=dict(color='#ef4444', width=2), name='Signal'),
+            go.Scatter(x=df.index, y=df['Signal_Line'], 
+                      line=dict(color='#ef4444', width=2), name='Signal'),
             row=3, col=1
         )
         fig.update_yaxes(title_text="MACD", row=3, col=1)
@@ -309,14 +260,16 @@ def crear_grafico_avanzado(
     elif "Squeeze" in strat_name and 'Momentum' in df.columns:
         colors_momentum = ['#10b981' if val > 0 else '#ef4444' for val in df['Momentum']]
         fig.add_trace(
-            go.Bar(x=df.index, y=df['Momentum'], marker_color=colors_momentum, name='Momentum'),
+            go.Bar(x=df.index, y=df['Momentum'], marker_color=colors_momentum, 
+                  name='Momentum'),
             row=3, col=1
         )
         fig.update_yaxes(title_text="Momentum", row=3, col=1)
     
     elif "ADX" in strat_name and 'ADX' in df.columns:
         fig.add_trace(
-            go.Scatter(x=df.index, y=df['ADX'], line=dict(color='#8b5cf6', width=2), name='ADX'),
+            go.Scatter(x=df.index, y=df['ADX'], line=dict(color='#8b5cf6', width=2),
+                      name='ADX'),
             row=3, col=1
         )
         fig.add_hline(y=25, line_dash="dash", line_color="orange", row=3, col=1)
@@ -324,7 +277,7 @@ def crear_grafico_avanzado(
     
     # Layout
     fig.update_layout(
-        title=f"Análisis Técnico Completo",
+        title="Análisis Técnico Completo",
         xaxis_rangeslider_visible=False,
         height=900,
         showlegend=True,
@@ -340,23 +293,16 @@ def crear_grafico_avanzado(
 
 
 def analizar_senal_actual(df: pd.DataFrame, strat_name: str, params: Dict) -> tuple:
-    """
-    Analiza la señal actual y retorna descripción y color.
-    
-    Returns:
-        (texto_señal, color_clase)
-    """
+    """Analiza la señal actual y retorna (texto, clase_css)"""
     today = df.iloc[-1]
     signal_val = today.get('Signal', 0)
     
-    # SuperTrend
     if "SuperTrend" in strat_name and 'Trend_Dir' in df.columns:
         if df['Trend_Dir'].iloc[-1] == 1:
             return "🟢 TENDENCIA ALCISTA (SUPERTREND)", "signal-bullish"
         else:
             return "🔻 TENDENCIA BAJISTA", "signal-bearish"
     
-    # Squeeze Momentum
     elif "Squeeze" in strat_name and 'Momentum' in df.columns:
         mom = df['Momentum'].iloc[-1]
         if mom > 0:
@@ -364,7 +310,6 @@ def analizar_senal_actual(df: pd.DataFrame, strat_name: str, params: Dict) -> tu
         else:
             return f"⬇️ MOMENTUM NEGATIVO ({mom:.2f})", "signal-bearish"
     
-    # ADX
     elif "ADX" in strat_name and 'ADX' in df.columns:
         adx = df['ADX'].iloc[-1]
         if signal_val == 1:
@@ -372,7 +317,6 @@ def analizar_senal_actual(df: pd.DataFrame, strat_name: str, params: Dict) -> tu
         else:
             return f"😴 RANGO / NEUTRO (ADX: {adx:.1f})", "signal-neutral"
     
-    # EMA
     elif "EMA" in strat_name:
         ema_fast = df['Close'].ewm(span=params['fast'], adjust=False).mean().iloc[-1]
         ema_slow = df['Close'].ewm(span=params['slow'], adjust=False).mean().iloc[-1]
@@ -381,14 +325,12 @@ def analizar_senal_actual(df: pd.DataFrame, strat_name: str, params: Dict) -> tu
         else:
             return "📉 TENDENCIA BAJISTA (EMA)", "signal-bearish"
     
-    # Golden Cross
     elif "Golden" in strat_name:
         if signal_val == 1:
             return "🌟 GOLDEN CROSS - ALCISTA", "signal-bullish"
         else:
             return "💀 DEATH CROSS - BAJISTA", "signal-bearish"
     
-    # Mean Reversion (RSI)
     elif "Mean Reversion" in strat_name and 'RSI' in df.columns:
         rsi = today['RSI']
         if rsi < params.get('rsi_low', 30):
@@ -398,102 +340,54 @@ def analizar_senal_actual(df: pd.DataFrame, strat_name: str, params: Dict) -> tu
         else:
             return f"➖ NEUTRAL (RSI: {rsi:.1f})", "signal-neutral"
     
-    # MACD
     elif "MACD" in strat_name:
-        if signal_val == 1:
-            return "🔵 MACD ALCISTA", "signal-bullish"
-        else:
-            return "🔴 MACD BAJISTA", "signal-bearish"
+        return ("🔵 MACD ALCISTA", "signal-bullish") if signal_val == 1 else ("🔴 MACD BAJISTA", "signal-bearish")
     
-    # Stochastic RSI
     elif "Stochastic" in strat_name:
-        if signal_val == 1:
-            return "⚡ STOCH RSI - MOMENTUM ALCISTA", "signal-bullish"
-        else:
-            return "⚡ STOCH RSI - MOMENTUM BAJISTA", "signal-bearish"
+        return ("⚡ STOCH RSI - MOMENTUM ALCISTA", "signal-bullish") if signal_val == 1 else ("⚡ STOCH RSI - MOMENTUM BAJISTA", "signal-bearish")
     
-    # Bollinger
     elif "Bollinger" in strat_name:
-        if signal_val == 1:
-            return "💥 RUPTURA ALCISTA (BOLLINGER)", "signal-bullish"
-        else:
-            return "➖ SIN RUPTURA", "signal-neutral"
+        return ("💥 RUPTURA ALCISTA (BOLLINGER)", "signal-bullish") if signal_val == 1 else ("➖ SIN RUPTURA", "signal-neutral")
     
-    # Awesome Oscillator
     elif "Awesome" in strat_name:
-        if signal_val == 1:
-            return "🎸 AWESOME OSCILLATOR - ALCISTA", "signal-bullish"
-        else:
-            return "🎸 AWESOME OSCILLATOR - BAJISTA", "signal-bearish"
+        return ("🎸 AWESOME OSCILLATOR - ALCISTA", "signal-bullish") if signal_val == 1 else ("🎸 AWESOME OSCILLATOR - BAJISTA", "signal-bearish")
     
-    # Default
-    if signal_val == 1:
-        return "🟢 SEÑAL ALCISTA", "signal-bullish"
-    else:
-        return "🔴 SEÑAL BAJISTA", "signal-bearish"
+    return ("🟢 SEÑAL ALCISTA", "signal-bullish") if signal_val == 1 else ("🔴 SEÑAL BAJISTA", "signal-bearish")
 
 
 # ============================================
-# SIDEBAR - NAVEGACIÓN Y CONTROLES
+# SIDEBAR
 # ============================================
 
 with st.sidebar:
     st.markdown("# 🎛️ Panel de Control")
-    
-    # Selector de activo
     st.markdown("### 📊 Selección de Activo")
     
-    # Organizar por sector
     sector_seleccionado = st.selectbox(
         "Sector",
-        ["Todos"] + [
-            "INDICES", "CRYPTO", "TECH", "COMMUNICATIONS", 
-            "CYCLICAL", "FINANCIALS", "HEALTHCARE", 
-            "DEFENSIVE", "ENERGY", "INDUSTRIAL", "MATERIALS"
-        ]
+        ["Todos", "INDICES", "CRYPTO", "TECH", "COMMUNICATIONS", 
+         "CYCLICAL", "FINANCIALS", "HEALTHCARE", 
+         "DEFENSIVE", "ENERGY", "INDUSTRIAL", "MATERIALS"]
     )
     
-    if sector_seleccionado == "Todos":
-        tickers_disponibles = cfg.TICKERS
-    else:
-        tickers_disponibles = cfg.ASSETS.get_by_sector(sector_seleccionado)
-    
+    tickers_disponibles = cfg.TICKERS if sector_seleccionado == "Todos" else cfg.ASSETS.get_by_sector(sector_seleccionado)
     ticker = st.selectbox("Ticker:", tickers_disponibles)
     
     st.markdown("---")
-    
-    # Información del activo
     st.markdown("### 📍 Información")
     sector = cfg.ASSETS.get_sector_for_ticker(ticker)
     st.info(f"**Sector:** {sector}")
     
-    # Estrategia configurada
     strategy_config = cfg.STRATEGY_MAP_OBJ.get_strategy(ticker)
     if strategy_config:
         st.success(f"**Estrategia:** {strategy_config['strategy']}")
     
     st.markdown("---")
-    
-    # Configuración de riesgo
     st.markdown("### 💰 Gestión de Riesgo")
-    capital = st.number_input(
-        "Capital ($)",
-        min_value=100.0,
-        value=float(cfg.RISK.capital_total),
-        step=500.0
-    )
-    
-    riesgo_pct = st.slider(
-        "Riesgo por Trade (%)",
-        min_value=0.5,
-        max_value=10.0,
-        value=float(cfg.RISK.riesgo_por_operacion * 100),
-        step=0.5
-    )
+    capital = st.number_input("Capital ($)", min_value=100.0, value=float(cfg.RISK.capital_total), step=500.0)
+    riesgo_pct = st.slider("Riesgo por Trade (%)", min_value=0.5, max_value=10.0, value=float(cfg.RISK.riesgo_por_operacion * 100), step=0.5)
     
     st.markdown("---")
-    
-    # Links rápidos
     st.markdown("### 🔗 Enlaces Rápidos")
     st.page_link("pages/radar.py", label="🎯 Radar de Oportunidades", icon="🎯")
     
@@ -505,10 +399,8 @@ with st.sidebar:
 # CONTENIDO PRINCIPAL
 # ============================================
 
-# Header
 st.markdown('<h1 class="main-header">⚡ TradeXpert: Piloto Automático</h1>', unsafe_allow_html=True)
 
-# Obtener datos
 with st.spinner(f"🤖 Analizando {ticker} con IA..."):
     winner, df = get_best_strategy(ticker)
 
@@ -517,159 +409,83 @@ if winner and df is not None and not df.empty:
     strat_name = winner['Estrategia']
     params = winner['Params']
     
-    # Tabs principales
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 Análisis Técnico",
-        "📈 Performance",
-        "🎯 Trading Setup",
-        "ℹ️ Información"
-    ])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Análisis Técnico", "📈 Performance", "🎯 Trading Setup", "ℹ️ Información"])
     
-    # ========================================
     # TAB 1: ANÁLISIS TÉCNICO
-    # ========================================
     with tab1:
-        # Banner de estrategia
         st.success(f"✅ **Estrategia Óptima Detectada:** {strat_name}")
         
-        # Métricas principales
         col1, col2, col3, col4, col5 = st.columns(5)
-        
         with col1:
             st.metric("💵 Precio Actual", f"${today['Close']:.2f}")
-        
         with col2:
             cambio_diario = ((today['Close'] - df.iloc[-2]['Close']) / df.iloc[-2]['Close']) * 100
             st.metric("📊 Cambio 24h", f"{cambio_diario:+.2f}%")
-        
         with col3:
             st.metric("📈 Retorno 2Y", f"{winner['Retorno']*100:+.0f}%")
-        
         with col4:
-            sharpe_color = "normal" if winner['Sharpe'] >= 1.0 else "inverse"
-            st.metric("⚡ Sharpe Ratio", f"{winner['Sharpe']:.2f}", delta_color=sharpe_color)
-        
+            st.metric("⚡ Sharpe Ratio", f"{winner['Sharpe']:.2f}")
         with col5:
-            dd_color = "inverse" if winner['Drawdown'] < -0.3 else "normal"
-            st.metric("📉 Max Drawdown", f"{winner['Drawdown']*100:.1f}%", delta_color=dd_color)
+            st.metric("📉 Max Drawdown", f"{winner['Drawdown']*100:.1f}%")
         
         st.markdown("---")
-        
-        # Señal actual
         texto_senal, color_clase = analizar_senal_actual(df, strat_name, params)
         st.markdown(f'<div class="{color_clase}">{texto_senal}</div>', unsafe_allow_html=True)
-        
         st.markdown("---")
         
-        # Instanciar estrategia y generar señales
         strat_obj = instanciar_estrategia(strat_name)
         if strat_obj:
             df = strat_obj.generate_signals(df, params)
-            
-            # Gráfico avanzado
             fig = crear_grafico_avanzado(df, strat_name, params)
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.error(f"⚠️ No se pudo instanciar la estrategia: {strat_name}")
     
-    # ========================================
     # TAB 2: PERFORMANCE
-    # ========================================
     with tab2:
         st.subheader("📈 Métricas de Performance Detalladas")
-        
-        # Calcular métricas adicionales
-        if 'equity_curve' in winner:
-            equity = winner['equity_curve']
-        else:
-            # Recalcular equity curve
-            returns = df['Close'].pct_change() * df.get('Signal', 0).shift(1)
-            equity = (1 + returns).cumprod()
+        returns = df['Close'].pct_change() * df.get('Signal', 0).shift(1)
+        equity = (1 + returns).cumprod()
         
         col_p1, col_p2 = st.columns(2)
-        
         with col_p1:
             st.markdown("### 📊 Métricas Clave")
-            
             metrics_data = {
-                "Métrica": [
-                    "Retorno Total",
-                    "Sharpe Ratio",
-                    "Max Drawdown",
-                    "Retorno Anualizado",
-                    "Volatilidad Anualizada"
-                ],
-                "Valor": [
-                    f"{winner['Retorno']*100:.2f}%",
-                    f"{winner['Sharpe']:.2f}",
-                    f"{winner['Drawdown']*100:.2f}%",
-                    f"{(winner['Retorno']/2)*100:.2f}%",  # Aprox para 2 años
-                    "N/A"  # Calcular si necesario
-                ]
+                "Métrica": ["Retorno Total", "Sharpe Ratio", "Max Drawdown", "Retorno Anualizado"],
+                "Valor": [f"{winner['Retorno']*100:.2f}%", f"{winner['Sharpe']:.2f}", 
+                         f"{winner['Drawdown']*100:.2f}%", f"{(winner['Retorno']/2)*100:.2f}%"]
             }
-            
-            st.dataframe(
-                pd.DataFrame(metrics_data),
-                use_container_width=True,
-                hide_index=True
-            )
+            st.dataframe(pd.DataFrame(metrics_data), use_container_width=True, hide_index=True)
         
         with col_p2:
             st.markdown("### 💰 Simulación de Capital")
-            
             capital_inicial = 10000
             capital_final = capital_inicial * (1 + winner['Retorno'])
             ganancia = capital_final - capital_inicial
-            
             st.metric("Capital Inicial", f"${capital_inicial:,.2f}")
             st.metric("Capital Final", f"${capital_final:,.2f}", f"+${ganancia:,.2f}")
-            st.metric("Ganancia Porcentual", f"{winner['Retorno']*100:.2f}%")
+            st.metric("Ganancia %", f"{winner['Retorno']*100:.2f}%")
         
-        # Gráfico de equity curve
         st.markdown("### 📈 Curva de Equity")
-        
         fig_equity = go.Figure()
-        fig_equity.add_trace(go.Scatter(
-            x=equity.index,
-            y=equity.values,
-            fill='tozeroy',
-            name='Equity',
-            line=dict(color='#667eea', width=2)
-        ))
-        
-        fig_equity.update_layout(
-            title="Evolución del Capital (Equity Curve)",
-            xaxis_title="Fecha",
-            yaxis_title="Equity (múltiplo del capital inicial)",
-            template='plotly_white',
-            height=400
-        )
-        
+        fig_equity.add_trace(go.Scatter(x=equity.index, y=equity.values, fill='tozeroy', 
+                                        name='Equity', line=dict(color='#667eea', width=2)))
+        fig_equity.update_layout(title="Evolución del Capital", xaxis_title="Fecha", 
+                                yaxis_title="Equity (múltiplo)", template='plotly_white', height=400)
         st.plotly_chart(fig_equity, use_container_width=True)
     
-# ========================================
     # TAB 3: TRADING SETUP
-    # ========================================
     with tab3:
         st.subheader("🎯 Setup de Trading Recomendado")
-        
-        # Calcular setup con Risk Manager
         risk_mgr = RiskManager(df)
-        
-        # Determinar dirección basado en señal actual
         signal_actual = df.iloc[-1].get('Signal', 0)
         direction = "LONG" if signal_actual == 1 else "SHORT"
-        
-        setup = risk_mgr.get_trade_setup(
-            entry_price=today['Close'],
-            direction=direction,
-            atr_multiplier=cfg.RISK.atr_multiplier,
-            risk_reward_ratio=cfg.RISK.rr_ratio
-        )
+        setup = risk_mgr.get_trade_setup(entry_price=today['Close'], direction=direction, 
+                                         atr_multiplier=cfg.RISK.atr_multiplier, 
+                                         risk_reward_ratio=cfg.RISK.rr_ratio)
         
         if setup:
             col_s1, col_s2, col_s3 = st.columns(3)
-            
             with col_s1:
                 st.markdown("### 📍 Niveles de Precio")
                 st.metric("🎯 Entrada", f"${setup['entry']:.2f}")
@@ -680,87 +496,53 @@ if winner and df is not None and not df.empty:
             
             with col_s2:
                 st.markdown("### 💵 Gestión de Capital")
-                
                 riesgo_decimal = riesgo_pct / 100
                 units = risk_mgr.calculate_position_size(capital, riesgo_decimal, setup)
                 inversion = units * setup['entry']
-                
                 st.metric("📦 Unidades", f"{units:.4f}")
                 st.metric("💰 Inversión Total", f"${inversion:,.2f}")
                 st.metric("🎲 Riesgo ($)", f"${capital * riesgo_decimal:,.2f}")
             
             with col_s3:
                 st.markdown("### 📊 Ratios")
-                
                 riesgo_trade = abs(setup['stop_loss'] - setup['entry']) * units
                 ganancia_potencial = abs(setup['take_profit'] - setup['entry']) * units
-                
                 st.metric("📉 Riesgo/Trade", f"${riesgo_trade:.2f}")
                 st.metric("📈 Ganancia Potencial", f"${ganancia_potencial:.2f}")
                 st.metric("⚖️ R:R Ratio", f"1:{setup['rr_ratio']}")
             
             st.markdown("---")
-            
-            # Visualización del setup
             st.markdown("### 📊 Visualización del Setup")
-            
-            # Últimos 50 días para contexto visual
             df_reciente = df.tail(50)
-            
             fig_setup = go.Figure()
-            
-            # Precio (Candlestick) - AQUÍ SE HABÍA CORTADO EL CÓDIGO ANTERIOR
-            fig_setup.add_trace(go.Candlestick(
-                x=df_reciente.index,
-                open=df_reciente['Open'],
-                high=df_reciente['High'],
-                low=df_reciente['Low'],
-                close=df_reciente['Close'],
-                name='Precio'
-            ))
-
-            # Niveles del setup
+            fig_setup.add_trace(go.Candlestick(x=df_reciente.index, open=df_reciente['Open'], 
+                                               high=df_reciente['High'], low=df_reciente['Low'], 
+                                               close=df_reciente['Close'], name='Precio'))
             fig_setup.add_hline(y=setup['entry'], line_dash="solid", line_color="blue", 
                                annotation_text="ENTRADA", annotation_position="right")
             fig_setup.add_hline(y=setup['stop_loss'], line_dash="dash", line_color="red",
                                annotation_text="STOP LOSS", annotation_position="right")
             fig_setup.add_hline(y=setup['take_profit'], line_dash="dash", line_color="green",
                                annotation_text="TAKE PROFIT", annotation_position="right")
-            
-            fig_setup.update_layout(
-                title=f"Setup de Trading - {ticker} ({direction})",
-                xaxis_title="Fecha",
-                yaxis_title="Precio ($)",
-                template='plotly_white',
-                height=500,
-                showlegend=True,
-                xaxis_rangeslider_visible=False
-            )
-            
+            fig_setup.update_layout(title=f"Setup de Trading - {ticker} ({direction})", 
+                                   xaxis_title="Fecha", yaxis_title="Precio ($)", 
+                                   template='plotly_white', height=500, showlegend=True)
             st.plotly_chart(fig_setup, use_container_width=True)
-            
         else:
-            st.warning("⚠️ No se pudo calcular el setup de trading (ATR insuficiente o datos faltantes)")
-
-    # ========================================
+            st.warning("⚠️ No se pudo calcular el setup (ATR insuficiente)")
+    
     # TAB 4: INFORMACIÓN
-    # ========================================
     with tab4:
         st.subheader("ℹ️ Información Detallada del Activo")
-        
         col_i1, col_i2 = st.columns(2)
         
         with col_i1:
             st.markdown("### 📊 Datos del Activo")
             st.info(f"""
             **Ticker:** {ticker}
-            
             **Sector:** {sector}
-            
             **Estrategia Óptima:** {strat_name}
-            
-            **Período Analizado:** {df.index[0].strftime('%Y-%m-%d')} a {df.index[-1].strftime('%Y-%m-%d')}
-            
+            **Período:** {df.index[0].strftime('%Y-%m-%d')} a {df.index[-1].strftime('%Y-%m-%d')}
             **Días de Datos:** {len(df)}
             """)
         
@@ -769,18 +551,10 @@ if winner and df is not None and not df.empty:
             st.code(str(params), language="python")
         
         st.markdown("---")
-        
         st.markdown("### 📈 Estadísticas del Precio")
-        
         price_stats = {
-            "Métrica": [
-                "Precio Actual",
-                "Máximo 52 Semanas",
-                "Mínimo 52 Semanas",
-                "Promedio Móvil 50d",
-                "Promedio Móvil 200d",
-                "Volatilidad (30d)"
-            ],
+            "Métrica": ["Precio Actual", "Máximo 52 Semanas", "Mínimo 52 Semanas", 
+                       "Promedio Móvil 50d", "Promedio Móvil 200d", "Volatilidad (30d)"],
             "Valor": [
                 f"${today['Close']:.2f}",
                 f"${df['High'].tail(252).max():.2f}",
@@ -790,22 +564,18 @@ if winner and df is not None and not df.empty:
                 f"{df['Close'].pct_change().tail(30).std() * 100:.2f}%"
             ]
         }
-        
         st.dataframe(pd.DataFrame(price_stats), use_container_width=True, hide_index=True)
 
 else:
-    # Manejo de errores si no hay 'winner' o 'df'
-    st.error("❌ Error cargando datos del activo. Por favor intenta con otro ticker.")
+    st.error("❌ Error cargando datos del activo. Intenta con otro ticker.")
     if winner is None:
-        st.info("💡 Posibles causas: ticker inválido, sin datos históricos suficientes, o error de conexión con Yahoo Finance.")
+        st.info("💡 Posibles causas: ticker inválido, sin datos suficientes, o error de conexión.")
 
-# ============================================
 # FOOTER
-# ============================================
 st.markdown("---")
 st.caption(f"""
-{cfg.APP.app_name} v{cfg.APP.app_version} | 
-Desarrollado con ❤️ y ☕ | 
-© {datetime.now().year} | 
-📧 Soporte: support@tradexpert.com
+    {cfg.APP.app_name} v{cfg.APP.app_version} | 
+    Desarrollado con ❤️ y ☕ | 
+    © 2024 | 
+    📧 Soporte: support@tradexpert.com
 """)
