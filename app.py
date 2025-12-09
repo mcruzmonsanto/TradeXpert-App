@@ -103,15 +103,34 @@ def instanciar_estrategia(strat_name: str):
     return None
 
 
-@st.cache_data(ttl=cfg.APP.cache_ttl_seconds)
+@st.cache_data(ttl=cfg.APP.cache_ttl_seconds, show_spinner=False)
 def get_best_strategy(symbol: str) -> tuple:
     """Obtiene la mejor estrategia para un activo con cache"""
     try:
+        # Validar que el ticker existe
+        if symbol not in cfg.TICKERS:
+            return None, None
+        
         scout = AssetScout(symbol)
+        
+        # Verificar que hay datos
+        if scout.data is None or scout.data.empty:
+            return None, None
+        
         winner = scout.optimize()
+        
+        # Verificar que la optimización fue exitosa
+        if winner is None:
+            return None, None
+            
         return winner, scout.data
+        
     except Exception as e:
-        st.error(f"❌ Error obteniendo estrategia para {symbol}: {e}")
+        import traceback
+        st.error(f"❌ Error obteniendo estrategia para {symbol}")
+        st.error(f"Detalle: {str(e)}")
+        with st.expander("Ver detalles técnicos"):
+            st.code(traceback.format_exc())
         return None, None
 
 
