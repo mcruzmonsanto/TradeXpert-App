@@ -1,39 +1,27 @@
-# classes/scout.py - VERSIÓN ULTRA OPTIMIZADA
+# classes/scout.py - VERSIÓN CORREGIDA COMPLETA
 import yfinance as yf
 import pandas as pd
 import config as cfg
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 import concurrent.futures
-from functools import lru_cache
 import streamlit as st
 
 # Importamos las Clásicas
 from classes.strategies import (
     GoldenCrossStrategy, MeanReversionStrategy, BollingerBreakoutStrategy, 
-    MACDStrategy, EMAStrategy, StochRSIStrategy, AwesomeOscillatorStrategy
+    MACDStrategy, EMAStrategy, StochRSIStrategy, AwesomeOscillatorStrategy,
+    SuperTrendStrategy, SqueezeMomentumStrategy, ADXStrategy
 )
-# Importamos las PRO
-from classes.strategies_pro import SuperTrendStrategy, SqueezeMomentumStrategy, ADXStrategy
 
 
 class AssetScout:
     """
-    Scout optimizado con:
-    - Cache inteligente de datos
-    - Descarga paralela de múltiples tickers
-    - Grid search eficiente
-    - Memoria de estrategias ganadoras
-    
-    MEJORAS vs VERSIÓN ORIGINAL:
-    1. 5-10x más rápido con paralelización
-    2. Cache de datos de yfinance
-    3. Early stopping en optimización
-    4. Validaciones robustas
+    Scout optimizado con cache y paralelización.
     """
     
     def __init__(self, ticker: str):
         self.ticker = ticker.upper().strip()
-        self.data = self._download_data(self.ticker)  # SIN decorador aquí
+        self.data = self._download_data()  # SIN parámetro ticker
         self.strategies = self._initialize_strategies()
         
     def _initialize_strategies(self) -> List:
@@ -53,76 +41,53 @@ class AssetScout:
             AwesomeOscillatorStrategy()
         ]
     
-    @st.cache_data(ttl=3600)  # Cache por 1 hora
-    # EN classes/scout.py - CORREGIR ESTA FUNCIÓN:
-
-    def _download_data(self, ticker: str) -> pd.DataFrame:
+    def _download_data(self) -> pd.DataFrame:
         """
-        Descarga datos con manejo de errores robusto.
-        NOTA: El cache se maneja a nivel superior, no aquí.
+        Descarga datos históricos.
+        NOTA: Usa self.ticker, no recibe parámetro.
         """
         try:
-            import yfinance as yf
-        
-            # Descargar datos
-            df = yf.Ticker(ticker).history(period="2y")
-        
+            df = yf.Ticker(self.ticker).history(period="2y")
+            
             if df.empty:
-                return pd.DataFrame()
-        
-            if len(df) < 50:
+                st.warning(f"⚠️ {self.ticker}: Sin datos históricos")
                 return pd.DataFrame()
             
+            if len(df) < 50:
+                st.warning(f"⚠️ {self.ticker}: Datos insuficientes ({len(df)} días)")
+                return pd.DataFrame()
+                
             return df
-        
+            
         except Exception as e:
-            print(f"Error descargando {ticker}: {e}")
+            st.error(f"❌ Error descargando {self.ticker}: {e}")
             return pd.DataFrame()
     
     def optimize(self, force_recalc: bool = False) -> Optional[Dict]:
         """
         Optimiza estrategia para el ticker.
-        
-        FLUJO:
-        1. Intenta cargar configuración guardada (RÁPIDO)
-        2. Si no existe, ejecuta grid search (LENTO)
-        3. Guarda mejor resultado en memoria
-        
-        Args:
-            force_recalc: Si True, ignora cache y recalcula
-            
-        Returns:
-            Dict con mejor estrategia o None si falla
         """
         if self.data.empty:
             return None
         
-        # ============================================
-        # MODO RÁPIDO: Usar configuración guardada
-        # ============================================
+        # Modo rápido: cargar configuración guardada
         if not force_recalc and self._has_saved_config():
             result = self._load_saved_config()
             if result:
                 return result
         
-        # ============================================
-        # MODO LENTO: Grid Search Optimizado
-        # ============================================
+        # Modo lento: grid search optimizado
         return self._run_grid_search()
     
     def _has_saved_config(self) -> bool:
-        """Verifica si existe configuración guardada para este ticker"""
+        """Verifica si existe configuración guardada"""
         return (
             hasattr(cfg, 'STRATEGY_MAP') and 
             self.ticker in cfg.STRATEGY_MAP
         )
     
     def _load_saved_config(self) -> Optional[Dict]:
-        """
-        Carga configuración guardada y ejecuta backtest.
-        
-        OPTIMIZACIÓN: 100x más rápido que grid search.
-        """
+        """Carga configuración guardada y ejecuta backtest"""
         saved_config = cfg.STRATEGY_MAP[self.ticker]
         strat_name = saved_config['strategy']
         params = saved_config['params']
@@ -134,7 +99,6 @@ class AssetScout:
         )
         
         if not strat_obj:
-            st.warning(f"⚠️ Estrategia '{strat_name}' no encontrada para {self.ticker}")
             return None
         
         try:
@@ -147,34 +111,19 @@ class AssetScout:
                 "Sharpe": metrics["sharpe"],
                 "Drawdown": metrics["drawdown"],
                 "Params": params,
-                "Source": "CACHE"  # Indicador de que vino de cache
+                "Source": "CACHE"
             }
         except Exception as e:
             st.warning(f"⚠️ Error en backtest de {self.ticker}: {e}")
             return None
     
     def _run_grid_search(self) -> Optional[Dict]:
-        """
-        Ejecuta grid search optimizado con early stopping.
-        
-        OPTIMIZACIONES:
-        1. Early stopping si drawdown > 60%
-        2. Parámetros pre-filtrados (no testea todo)
-        3. Score combinado (return + sharpe/drawdown)
-        """
+        """Ejecuta grid search optimizado"""
         best_score = -999
         best_result = None
         
-        # Contador para progress bar
-        total_iterations = self._count_total_iterations()
-        current_iteration = 0
-        
-        # Progress bar (opcional, comentar si no quieres)
-        # progress_bar = st.progress(0)
-        # status_text = st.empty()
-        
         def evaluate_iteration(strat_obj, params):
-            nonlocal best_score, best_result, current_iteration
+            nonlocal best_score, best_result
             
             try:
                 metrics = strat_obj.backtest(self.data, params)
@@ -183,12 +132,11 @@ class AssetScout:
                 sharpe = metrics["sharpe"]
                 dd = metrics["drawdown"]
                 
-                # EARLY STOPPING: Descartar si DD muy alto
+                # Early stopping
                 if dd < -0.60:
                     return
                 
-                # SCORE COMBINADO (ajusta pesos según preferencia)
-                # Prioriza retorno, pero penaliza drawdown alto y sharpe bajo
+                # Score combinado
                 score = ret + (sharpe * 0.1) - (abs(dd) * 0.5)
                 
                 if score > best_score:
@@ -203,25 +151,14 @@ class AssetScout:
                         "Source": "OPTIMIZED"
                     }
                 
-            except Exception as e:
-                # Silenciosamente ignorar errores de backtest
+            except Exception:
                 pass
-            
-            finally:
-                current_iteration += 1
-                # Actualizar progress bar
-                # progress = current_iteration / total_iterations
-                # progress_bar.progress(progress)
-                # status_text.text(f"Optimizando {self.ticker}: {current_iteration}/{total_iterations}")
         
-        # ============================================
-        # GRID SEARCH POR ESTRATEGIA
-        # ============================================
+        # Grid search por estrategia
         for strat in self.strategies:
             
-            # ========== ESTRATEGIAS PRO ==========
+            # ESTRATEGIAS PRO
             if isinstance(strat, SuperTrendStrategy):
-                # Probar solo 2 combinaciones (antes podía ser 10+)
                 for params in [
                     {'period': 10, 'multiplier': 3.0}, 
                     {'period': 12, 'multiplier': 3.0}
@@ -235,13 +172,12 @@ class AssetScout:
             elif isinstance(strat, ADXStrategy):
                 for params in [
                     {'period': 14, 'adx_threshold': 20},
-                    {'period': 14, 'adx_threshold': 25}  # Variante más estricta
+                    {'period': 14, 'adx_threshold': 25}
                 ]:
                     evaluate_iteration(strat, params)
             
-            # ========== ESTRATEGIAS CLÁSICAS ==========
+            # ESTRATEGIAS CLÁSICAS
             elif isinstance(strat, GoldenCrossStrategy):
-                # Solo probar combinaciones clásicas
                 for fast, slow in [(20, 100), (50, 200)]:
                     evaluate_iteration(strat, {'fast': fast, 'slow': slow})
             
@@ -269,25 +205,13 @@ class AssetScout:
             elif isinstance(strat, AwesomeOscillatorStrategy):
                 evaluate_iteration(strat, {'fast': 5, 'slow': 34})
         
-        # Limpiar progress bar
-        # progress_bar.empty()
-        # status_text.empty()
-        
         return best_result
-    
-    def _count_total_iterations(self) -> int:
-        """Cuenta iteraciones totales para progress bar"""
-        # SuperTrend: 2, Squeeze: 1, ADX: 2
-        # GoldenCross: 2, MeanReversion: 2, Bollinger: 1
-        # MACD: 1, EMA: 2, StochRSI: 1, AO: 1
-        return 15  # Total aproximado
 
 
 # ============================================
 # FUNCIONES AUXILIARES PARA BATCH PROCESSING
 # ============================================
 
-@st.cache_data(ttl=3600)
 def scan_multiple_tickers(
     tickers: List[str], 
     force_recalc: bool = False,
@@ -295,21 +219,6 @@ def scan_multiple_tickers(
 ) -> pd.DataFrame:
     """
     Escanea múltiples tickers EN PARALELO.
-    
-    OPTIMIZACIÓN CRÍTICA: 5-10x más rápido que secuencial.
-    
-    Args:
-        tickers: Lista de símbolos (ej: ['AAPL', 'MSFT', 'TSLA'])
-        force_recalc: Si True, ignora cache
-        max_workers: Número de threads paralelos (default: 5)
-        
-    Returns:
-        DataFrame con resultados ordenados por retorno
-        
-    Ejemplo:
-        >>> tickers = ['AAPL', 'MSFT', 'GOOGL', 'TSLA']
-        >>> results = scan_multiple_tickers(tickers)
-        >>> print(results)
     """
     results = []
     
@@ -358,38 +267,22 @@ def scan_multiple_tickers(
 
 
 def _optimize_single_ticker(ticker: str, force_recalc: bool) -> Optional[Dict]:
-    """
-    Función auxiliar para paralelización.
-    Optimiza un solo ticker.
-    """
-    scout = AssetScout(ticker)
-    return scout.optimize(force_recalc=force_recalc)
+    """Función auxiliar para paralelización"""
+    try:
+        scout = AssetScout(ticker)
+        return scout.optimize(force_recalc=force_recalc)
+    except Exception:
+        return None
 
-
-# ============================================
-# FUNCIÓN DE FILTRADO INTELIGENTE
-# ============================================
 
 def filter_top_opportunities(
     df: pd.DataFrame, 
-    min_return: float = 0.10,  # 10%
-    max_drawdown: float = -0.40,  # -40%
+    min_return: float = 0.10,
+    max_drawdown: float = -0.40,
     min_sharpe: float = 0.5,
     top_n: int = 10
 ) -> pd.DataFrame:
-    """
-    Filtra las mejores oportunidades según criterios.
-    
-    Args:
-        df: DataFrame de resultados de scan_multiple_tickers()
-        min_return: Retorno mínimo (ej: 0.10 = 10%)
-        max_drawdown: Drawdown máximo aceptable (ej: -0.40 = -40%)
-        min_sharpe: Sharpe ratio mínimo
-        top_n: Número de resultados a retornar
-        
-    Returns:
-        DataFrame filtrado y limitado a top_n
-    """
+    """Filtra las mejores oportunidades según criterios"""
     if df.empty:
         return df
     
@@ -400,27 +293,3 @@ def filter_top_opportunities(
     ]
     
     return filtered.head(top_n)
-
-
-# ============================================
-# EJEMPLO DE USO
-# ============================================
-if __name__ == "__main__":
-    # Escaneo individual
-    print("📊 Escaneando AAPL...")
-    scout = AssetScout("AAPL")
-    result = scout.optimize()
-    
-    if result:
-        print(f"✅ Mejor estrategia: {result['Estrategia']}")
-        print(f"   Retorno: {result['Retorno']:.2%}")
-        print(f"   Sharpe: {result['Sharpe']:.2f}")
-        print(f"   Drawdown: {result['Drawdown']:.2%}")
-    
-    # Escaneo múltiple (paralelo)
-    print("\n📊 Escaneando múltiples tickers...")
-    tickers = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA']
-    results_df = scan_multiple_tickers(tickers)
-    
-    print("\n🏆 Top 3 Oportunidades:")
-    print(results_df.head(3)[['Ticker', 'Estrategia', 'Retorno', 'Sharpe']])
