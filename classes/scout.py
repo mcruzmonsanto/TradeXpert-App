@@ -33,7 +33,7 @@ class AssetScout:
     
     def __init__(self, ticker: str):
         self.ticker = ticker.upper().strip()
-        self.data = self._download_data()
+        self.data = self._download_data(self.ticker)  # SIN decorador aquí
         self.strategies = self._initialize_strategies()
         
     def _initialize_strategies(self) -> List:
@@ -54,28 +54,29 @@ class AssetScout:
         ]
     
     @st.cache_data(ttl=3600)  # Cache por 1 hora
-    def _download_data(_self, ticker: str) -> pd.DataFrame:
+    # EN classes/scout.py - CORREGIR ESTA FUNCIÓN:
+
+    def _download_data(self, ticker: str) -> pd.DataFrame:
         """
-        Descarga datos con CACHE de Streamlit.
-        
-        OPTIMIZACIÓN: Evita descargar el mismo ticker múltiples veces.
-        Cache de 1 hora - ajusta según tus necesidades.
+        Descarga datos con manejo de errores robusto.
+        NOTA: El cache se maneja a nivel superior, no aquí.
         """
         try:
+            import yfinance as yf
+        
+            # Descargar datos
             df = yf.Ticker(ticker).history(period="2y")
-            
+        
             if df.empty:
-                st.warning(f"⚠️ {ticker}: Sin datos históricos")
                 return pd.DataFrame()
-            
+        
             if len(df) < 50:
-                st.warning(f"⚠️ {ticker}: Datos insuficientes ({len(df)} días)")
                 return pd.DataFrame()
-                
-            return df
             
+            return df
+        
         except Exception as e:
-            st.error(f"❌ Error descargando {ticker}: {e}")
+            print(f"Error descargando {ticker}: {e}")
             return pd.DataFrame()
     
     def optimize(self, force_recalc: bool = False) -> Optional[Dict]:
